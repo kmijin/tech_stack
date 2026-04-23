@@ -189,7 +189,12 @@ export function generateScript(
         `$results["${d.key}"] = ${d.powershell}`,
       ].join('\n')),
       '',
-      '$results | ConvertTo-Json',
+      'Write-Host ""',
+      'Write-Host "========================================="',
+      'Write-Host "아래 한 줄을 복사해서 대시보드에 붙여넣기"',
+      'Write-Host "========================================="',
+      '$results | ConvertTo-Json -Compress',
+      'Write-Host "========================================="',
     ].join('\n')
   }
 }

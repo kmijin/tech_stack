@@ -4,7 +4,7 @@ import {
   CheckCircle, ExternalLink, ChevronDown, ChevronUp,
   TrendingUp, Star, Clock, Layers, Database, RefreshCw,
   ArrowUpRight, Info, Shield, Settings, Sparkles, X, Wifi, WifiOff,
-  Terminal, Copy, Download, BarChart2,
+  Terminal, Copy, Download, BarChart2, FileText,
 } from 'lucide-react'
 import { useLatestVersions } from './hooks/useLatestVersions'
 import type { StackId, VersionInfo } from './services/versionService'
@@ -14,6 +14,11 @@ import {
   generateScript, parseScanResult, getFileCount, GREP_DEFS, requiredKeys,
 } from './services/migrationScript'
 import type { ScriptInput, ScanResult } from './services/migrationScript'
+import {
+  scanFolder, pickFolder, isFolderPickerSupported,
+} from './services/folderScanner'
+import type { ScanProgress, FolderScanResult } from './services/folderScanner'
+import { FIX_GUIDES } from './services/migrationGuide'
 
 // ─────────────────────────────────────────────
 // Types
@@ -719,11 +724,16 @@ function RecommendSection({ versions, stack }: { versions: Record<string, string
 // Script Panel
 // ─────────────────────────────────────────────
 function ScriptPanel({ migrations }: { migrations: ScriptInput[] }) {
-  const [platform, setPlatform] = useState<'bash' | 'powershell'>('bash')
-  const [copied, setCopied]     = useState(false)
-  const [scanText, setScanText] = useState('')
+  const [platform, setPlatform]     = useState<'bash' | 'powershell'>('bash')
+  const [copied, setCopied]         = useState(false)
+  const [scanText, setScanText]     = useState('')
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [scriptOpen, setScriptOpen] = useState(false)
+  const [isScanning, setIsScanning]       = useState(false)
+  const [progress, setProgress]           = useState<ScanProgress | null>(null)
+  const [folderDetail, setFolderDetail]   = useState<FolderScanResult | null>(null)
+  const [expandedKey, setExpandedKey]     = useState<string | null>(null)
+  const folderSupported                   = isFolderPickerSupported()
 
   const script = generateScript(migrations, platform)
 
@@ -758,6 +768,33 @@ function ScriptPanel({ migrations }: { migrations: ScriptInput[] }) {
     if (!scanText.trim()) return
     const r = parseScanResult(scanText)
     setScanResult(r)
+  }
+
+  async function handleFolderScan() {
+    const dir = await pickFolder()
+    if (!dir) return
+
+    setIsScanning(true)
+    setProgress({ scanned: 0 })
+    setScanResult(null)
+    setFolderDetail(null)
+    setExpandedKey(null)
+
+    try {
+      const result = await scanFolder(dir, [...neededKeys], p => setProgress(p))
+      setFolderDetail(result)
+      // 카운트 결과도 기존 ScanResult 형식으로 변환 (복잡도 계산용)
+      const sr: ScanResult = {
+        meta: { total_java_files: result.javaFiles },
+        results: Object.fromEntries(
+          Object.entries(result.counts).map(([k, v]) => [k, { files: v }])
+        ),
+      }
+      setScanResult(sr)
+    } finally {
+      setIsScanning(false)
+      setProgress(null)
+    }
   }
 
   if (script === '' && grepDefs.length === 0) {
@@ -827,16 +864,52 @@ function ScriptPanel({ migrations }: { migrations: ScriptInput[] }) {
         )}
       </div>
 
-      {/* ── 스캔 결과 입력 (항상 표시) ── */}
+      {/* ── 스캔 결과 ── */}
       <div className="rounded-xl border border-violet-200 bg-violet-50/30 p-4 space-y-3">
         <p className="text-xs font-semibold text-violet-700 flex items-center gap-1.5">
-          <BarChart2 size={12} /> 스캔 결과 붙여넣기
-          <span className="font-normal text-violet-500 ml-1">— 스크립트 실행 후 출력된 JSON</span>
+          <BarChart2 size={12} /> 프로젝트 스캔
         </p>
+
+        {/* 폴더 선택 버튼 (Chrome/Edge) */}
+        {folderSupported && (
+          <div className="space-y-2">
+            <button
+              onClick={handleFolderScan}
+              disabled={isScanning}
+              className="w-full flex items-center justify-center gap-2 text-sm font-semibold
+                text-white bg-violet-600 px-4 py-2.5 rounded-xl hover:bg-violet-700
+                transition-colors shadow-sm disabled:opacity-50"
+            >
+              {isScanning ? (
+                <>
+                  <RefreshCw size={14} className="animate-spin" />
+                  스캔 중... {progress?.scanned ?? 0}개 파일 처리
+                </>
+              ) : (
+                <>
+                  <Download size={14} />
+                  폴더 선택해서 바로 스캔
+                </>
+              )}
+            </button>
+            {isScanning && (
+              <div className="w-full bg-violet-100 rounded-full h-1.5 overflow-hidden">
+                <div className="h-full bg-violet-500 rounded-full animate-pulse w-full" />
+              </div>
+            )}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-violet-100" />
+              <span className="text-[10px] text-violet-400">또는 스크립트 실행 후 붙여넣기</span>
+              <div className="flex-1 h-px bg-violet-100" />
+            </div>
+          </div>
+        )}
+
+        {/* 직접 붙여넣기 */}
         <textarea
           value={scanText}
           onChange={e => setScanText(e.target.value)}
-          rows={4}
+          rows={folderSupported ? 3 : 4}
           placeholder={'{\n  "javax_imports": { "files": 23 },\n  "websecurity_adapter": { "files": 2 }\n}'}
           className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-xs font-mono
             text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400
@@ -869,16 +942,102 @@ function ScriptPanel({ migrations }: { migrations: ScriptInput[] }) {
 
             <div className="space-y-1.5">
               {grepDefs.map(def => {
-                const count = getFileCount(scanResult, def.key)
-                const cx = fileComplexity(count)
+                const count    = getFileCount(scanResult, def.key)
+                const cx       = fileComplexity(count)
+                const details  = folderDetail?.matches[def.key] ?? []
+                const isOpen   = expandedKey === def.key
+
                 return (
-                  <div key={def.key} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border border-gray-100">
-                    <span className="text-xs text-gray-700 flex-1">{def.label}</span>
-                    <span className="font-mono text-sm font-bold text-gray-800 w-10 text-right">{count}</span>
-                    <span className="text-[10px] text-gray-400">파일</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cx.cls} w-16 text-center`}>
-                      {cx.level}
-                    </span>
+                  <div key={def.key} className="rounded-lg border border-gray-100 overflow-hidden bg-white">
+                    {/* 항목 헤더 */}
+                    <button
+                      className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 transition-colors text-left"
+                      onClick={() => count > 0 && setExpandedKey(isOpen ? null : def.key)}
+                    >
+                      <span className="text-xs text-gray-700 flex-1">{def.label}</span>
+                      <span className="font-mono text-sm font-bold text-gray-800 w-8 text-right">{count}</span>
+                      <span className="text-[10px] text-gray-400">파일</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cx.cls} w-16 text-center`}>
+                        {cx.level}
+                      </span>
+                      {count > 0 && details.length > 0 && (
+                        isOpen
+                          ? <ChevronUp size={11} className="text-gray-400 shrink-0" />
+                          : <ChevronDown size={11} className="text-gray-400 shrink-0" />
+                      )}
+                    </button>
+
+                    {/* 파일 상세 + 수정 가이드 (폴더 스캔 시만 표시) */}
+                    {isOpen && details.length > 0 && (
+                      <div className="border-t border-gray-100 bg-gray-50">
+                        {/* 파일별 매칭 줄 */}
+                        <div className="divide-y divide-gray-100">
+                          {details.map((detail, fi) => (
+                            <div key={fi} className="px-3 py-2.5">
+                              <p className="text-[10px] font-mono font-semibold text-violet-700 mb-2 flex items-center gap-1">
+                                <FileText size={9} className="shrink-0" />
+                                {detail.filePath}
+                              </p>
+                              <div className="space-y-1.5">
+                                {detail.lines.map((ln, li) => (
+                                  <div key={li} className="space-y-0.5">
+                                    {/* 현재 코드 */}
+                                    <div className="flex items-start gap-2">
+                                      <span className="text-[9px] font-mono text-gray-400 w-8 text-right shrink-0 pt-0.5 select-none">
+                                        {ln.lineNumber}
+                                      </span>
+                                      <code className="text-[10px] text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-100 flex-1 break-all">
+                                        {ln.content}
+                                      </code>
+                                    </div>
+                                    {/* 자동 수정안 */}
+                                    {ln.fixSuggestion && (
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-[9px] font-mono text-emerald-500 w-8 text-right shrink-0 pt-0.5 select-none">→</span>
+                                        <code className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 flex-1 break-all">
+                                          {ln.fixSuggestion}
+                                        </code>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* 수정 가이드 */}
+                        {FIX_GUIDES[def.key] && (
+                          <div className="mx-3 mb-3 rounded-lg border border-blue-200 bg-white overflow-hidden">
+                            <div className="px-3 py-2 bg-blue-50 border-b border-blue-100">
+                              <p className="text-[10px] font-bold text-blue-700 flex items-center gap-1">
+                                <Info size={9} /> 수정 방법 — {FIX_GUIDES[def.key].title}
+                              </p>
+                            </div>
+                            <div className="p-3 space-y-2">
+                              <div>
+                                <p className="text-[9px] font-bold text-red-500 mb-1">Before</p>
+                                <pre className="text-[10px] font-mono text-gray-700 bg-red-50 rounded px-2.5 py-2 overflow-x-auto leading-relaxed border border-red-100">
+                                  {FIX_GUIDES[def.key].before}
+                                </pre>
+                              </div>
+                              <div>
+                                <p className="text-[9px] font-bold text-emerald-600 mb-1">After</p>
+                                <pre className="text-[10px] font-mono text-gray-700 bg-emerald-50 rounded px-2.5 py-2 overflow-x-auto leading-relaxed border border-emerald-100">
+                                  {FIX_GUIDES[def.key].after}
+                                </pre>
+                              </div>
+                              {FIX_GUIDES[def.key].note && (
+                                <p className="text-[10px] text-amber-700 bg-amber-50 rounded px-2.5 py-1.5 border border-amber-100 flex items-start gap-1">
+                                  <AlertTriangle size={9} className="shrink-0 mt-0.5" />
+                                  {FIX_GUIDES[def.key].note}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}
