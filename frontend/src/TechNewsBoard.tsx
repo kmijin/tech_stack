@@ -1265,11 +1265,11 @@ function handleParsed(result: ParseResult) {
     ? enrichedStack.flatMap(s =>
         s.features.filter(f => f.type === 'breaking' && currentVersions[s.id] && isAffected(currentVersions[s.id], f.sinceVersion))
       ).length
-    : null
+    : 0
 
   const upgradable = hasCurrentInput
     ? enrichedStack.filter(s => currentVersions[s.id]?.trim() && versionGap(currentVersions[s.id], s.latestVersion) !== 'up-to-date').length
-    : 2
+    : 0
 
   const lastUpdated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
@@ -1324,12 +1324,12 @@ function handleParsed(result: ParseResult) {
           { label: '추적 중인 기술', value: STACK.length, icon: Layers, color: 'text-blue-600', bg: 'bg-white border-blue-100', num: 'text-blue-600' },
           { label: '신규 기능',      value: allNew,        icon: Star,   color: 'text-emerald-600', bg: 'bg-white border-emerald-100', num: 'text-emerald-600' },
           {
-            label: myBreaking !== null ? '내 버전 Breaking' : '전체 Breaking',
-            value: myBreaking !== null ? myBreaking : allBreaking,
+            label: hasCurrentInput ? '내 버전 Breaking' : 'Breaking',
+            value: myBreaking,
             icon: AlertTriangle,
-            color: (myBreaking ?? 0) > 0 ? 'text-red-600' : 'text-gray-400',
-            bg: (myBreaking ?? 0) > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200',
-            num: (myBreaking ?? 0) > 0 ? 'text-red-600' : 'text-gray-400',
+            color: myBreaking > 0 ? 'text-red-600' : 'text-gray-400',
+            bg: myBreaking > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200',
+            num: myBreaking > 0 ? 'text-red-600' : 'text-gray-400',
           },
           { label: hasCurrentInput ? '업그레이드 대상' : '업그레이드 권장', value: upgradable, icon: ArrowUpRight, color: 'text-amber-600', bg: 'bg-white border-amber-100', num: 'text-amber-600' },
         ].map(({ label, value, icon: Icon, color, bg, num }) => (
