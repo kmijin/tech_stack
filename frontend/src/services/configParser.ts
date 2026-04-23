@@ -1,0 +1,239 @@
+// ──────────────────────────────────────────────────────────
+// 설정 파일 파서 — package.json / build.gradle / pom.xml
+// ──────────────────────────────────────────────────────────
+
+export type ParsedVersions = Partial<Record<
+  'java' | 'springboot' | 'react' | 'vite' | 'zustand' | 'querydsl',
+  string
+>>
+
+export type FileType =
+  | 'package.json'
+  | 'build.gradle'
+  | 'build.gradle.kts'
+  | 'pom.xml'
+  | 'unknown'
+
+export interface ParseResult {
+  fileType: FileType
+  versions: ParsedVersions
+  // 어디서 어떻게 추출했는지 근거 (디버그용 표시)
+  evidence: { key: string; raw: string; extracted: string }[]
+  warnings: string[]
+}
+
+// ── 파일 타입 감지 ────────────────────────────────────────
+export function detectFileType(filename: string, content: string): FileType {
+  const name = filename.toLowerCase()
+  if (name === 'package.json' || name.endsWith('/package.json')) return 'package.json'
+  if (name === 'build.gradle.kts') return 'build.gradle.kts'
+  if (name === 'build.gradle') return 'build.gradle'
+  if (name === 'pom.xml') return 'pom.xml'
+
+  // 내용으로 추론
+  if (content.trim().startsWith('{') && content.includes('"dependencies"')) return 'package.json'
+  if (content.includes('<project') && content.includes('xmlns')) return 'pom.xml'
+  if (content.includes('org.springframework.boot') && content.includes('kotlin')) return 'build.gradle.kts'
+  if (content.includes('org.springframework.boot') || content.includes('implementation')) return 'build.gradle'
+  return 'unknown'
+}
+
+// ── 버전 문자열 정규화 ────────────────────────────────────
+function cleanVersion(v: string): string {
+  // "^19.2.0" → "19.2", "~4.0.5" → "4.0", "VERSION_25" → "25"
+  return v
+    .replace(/[\^~>=<]/g, '')
+    .replace(/^VERSION_/i, '')
+    .replace(/^\d+\.\d+\.\d+$/, m => m.split('.').slice(0, 2).join('.'))
+    .trim()
+}
+
+// ── package.json 파서 ──────────────────────────────────────
+function parsePackageJson(content: string): ParseResult {
+  const evidence: ParseResult['evidence'] = []
+  const warnings: string[] = []
+  const versions: ParsedVersions = {}
+
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    return { fileType: 'package.json', versions, evidence, warnings: ['JSON 파싱 실패'] }
+  }
+
+  const deps: Record<string, string> = {
+    ...(parsed.dependencies as Record<string, string> ?? {}),
+    ...(parsed.devDependencies as Record<string, string> ?? {}),
+  }
+
+  const map: [string, string, keyof ParsedVersions][] = [
+    ['react',                  'react',      'react'],
+    ['react-dom',              'react',      'react'],
+    ['vite',                   'vite',       'vite'],
+    ['zustand',                'zustand',    'zustand'],
+    ['@tanstack/react-query',  'zustand',    'zustand'],  // react-query도 참고
+  ]
+
+  for (const [pkg, label, key] of map) {
+    if (deps[pkg] && !versions[key]) {
+      const v = cleanVersion(deps[pkg])
+      versions[key] = v
+      evidence.push({ key: label, raw: deps[pkg], extracted: v })
+    }
+  }
+
+  // engines.node → 참고용
+  const engines = parsed.engines as Record<string, string> | undefined
+  if (engines?.node) {
+    warnings.push(`Node.js 요구사항: ${engines.node}`)
+  }
+
+  return { fileType: 'package.json', versions, evidence, warnings }
+}
+
+// ── build.gradle / build.gradle.kts 파서 ─────────────────
+function parseGradle(content: string, kts: boolean): ParseResult {
+  const evidence: ParseResult['evidence'] = []
+  const warnings: string[] = []
+  const versions: ParsedVersions = {}
+
+  // Spring Boot 플러그인 버전
+  // id 'org.springframework.boot' version '4.0.5'
+  // id("org.springframework.boot") version "4.0.5"
+  const sbMatch = content.match(
+    /id\s*[\(']org\.springframework\.boot[\)']\s+version\s+["']([^"']+)["']/
+  )
+  if (sbMatch) {
+    const v = cleanVersion(sbMatch[1])
+    versions.springboot = v
+    evidence.push({ key: 'Spring Boot plugin', raw: sbMatch[0], extracted: v })
+  }
+
+  // Java 버전
+  // sourceCompatibility = JavaVersion.VERSION_25
+  // sourceCompatibility = '25'
+  // java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
+  const javaMatch =
+    content.match(/JavaVersion\.VERSION_(\d+)/) ??
+    content.match(/sourceCompatibility\s*=\s*["'](\d+)["']/) ??
+    content.match(/JavaLanguageVersion\.of\((\d+)\)/) ??
+    content.match(/jvmToolchain\((\d+)\)/)
+  if (javaMatch) {
+    versions.java = javaMatch[1]
+    evidence.push({ key: 'Java version', raw: javaMatch[0], extracted: javaMatch[1] })
+  }
+
+  // QueryDSL 버전
+  // implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
+  const qdslMatch = content.match(/querydsl[^"'\s]*:([0-9]+\.[0-9]+\.[0-9]+)/)
+  if (qdslMatch) {
+    const v = cleanVersion(qdslMatch[1])
+    versions.querydsl = v
+    evidence.push({ key: 'QueryDSL', raw: qdslMatch[0], extracted: v })
+  }
+
+  // ext / gradle.properties 인라인 변수
+  // springBootVersion = "4.0.5"
+  if (!versions.springboot) {
+    const extMatch = content.match(/springBootVersion\s*[=:]\s*["']([^"']+)["']/)
+    if (extMatch) {
+      const v = cleanVersion(extMatch[1])
+      versions.springboot = v
+      evidence.push({ key: 'springBootVersion var', raw: extMatch[0], extracted: v })
+    }
+  }
+
+  if (!kts && content.includes('kotlin')) {
+    warnings.push('Kotlin DSL이 섞인 Groovy 파일로 보입니다. .kts 파일을 붙여넣으세요.')
+  }
+
+  return { fileType: kts ? 'build.gradle.kts' : 'build.gradle', versions, evidence, warnings }
+}
+
+// ── pom.xml 파서 ──────────────────────────────────────────
+function parsePomXml(content: string): ParseResult {
+  const evidence: ParseResult['evidence'] = []
+  const warnings: string[] = []
+  const versions: ParsedVersions = {}
+
+  let doc: Document
+  try {
+    doc = new DOMParser().parseFromString(content, 'application/xml')
+    if (doc.querySelector('parsererror')) throw new Error('XML parse error')
+  } catch {
+    return { fileType: 'pom.xml', versions, evidence, warnings: ['XML 파싱 실패'] }
+  }
+
+  // Spring Boot parent version
+  const parentGroupId = doc.querySelector('parent > groupId')?.textContent ?? ''
+  if (parentGroupId.includes('spring-boot')) {
+    const parentVer = doc.querySelector('parent > version')?.textContent ?? ''
+    if (parentVer) {
+      const v = cleanVersion(parentVer)
+      versions.springboot = v
+      evidence.push({ key: 'spring-boot parent', raw: parentVer, extracted: v })
+    }
+  }
+
+  // properties
+  const getText = (tag: string) => doc.querySelector(`properties > ${tag}`)?.textContent ?? ''
+
+  const javaVersion = getText('java.version') || getText('maven.compiler.source')
+  if (javaVersion) {
+    const v = cleanVersion(javaVersion)
+    versions.java = v
+    evidence.push({ key: 'java.version property', raw: javaVersion, extracted: v })
+  }
+
+  // Spring Boot dependency (spring-boot-starter-parent 아닌 경우)
+  if (!versions.springboot) {
+    const sbDep = [...doc.querySelectorAll('dependency')].find(
+      d => d.querySelector('artifactId')?.textContent?.startsWith('spring-boot')
+    )
+    if (sbDep) {
+      const ver = sbDep.querySelector('version')?.textContent ?? ''
+      if (ver) {
+        const v = cleanVersion(ver)
+        versions.springboot = v
+        evidence.push({ key: 'spring-boot dependency', raw: ver, extracted: v })
+      }
+    }
+  }
+
+  // QueryDSL
+  const qdslDep = [...doc.querySelectorAll('dependency')].find(
+    d => d.querySelector('groupId')?.textContent === 'com.querydsl'
+  )
+  if (qdslDep) {
+    const ver = qdslDep.querySelector('version')?.textContent ?? ''
+    if (ver) {
+      const v = cleanVersion(ver)
+      versions.querydsl = v
+      evidence.push({ key: 'querydsl dependency', raw: ver, extracted: v })
+    }
+  }
+
+  if (parentGroupId && !parentGroupId.includes('spring-boot')) {
+    warnings.push(`다른 parent (${parentGroupId}) 사용 중 — Spring Boot 버전이 간접 포함될 수 있습니다.`)
+  }
+
+  return { fileType: 'pom.xml', versions, evidence, warnings }
+}
+
+// ── 메인 파서 ─────────────────────────────────────────────
+export function parseConfigFile(filename: string, content: string): ParseResult {
+  const fileType = detectFileType(filename, content)
+  switch (fileType) {
+    case 'package.json':      return parsePackageJson(content)
+    case 'build.gradle':      return parseGradle(content, false)
+    case 'build.gradle.kts':  return parseGradle(content, true)
+    case 'pom.xml':           return parsePomXml(content)
+    default:
+      return {
+        fileType: 'unknown',
+        versions: {},
+        evidence: [],
+        warnings: ['지원하지 않는 파일 형식입니다. package.json / build.gradle / pom.xml 을 사용해주세요.'],
+      }
+  }
+}

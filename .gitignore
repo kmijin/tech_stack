@@ -1,0 +1,26 @@
+# Playwright MCP 캐시
+.playwright-mcp/
+
+# Vite 캐시
+.vite/
+
+# 빌드 결과물
+frontend/dist/
+
+# 의존성
+frontend/node_modules/
+
+# 환경변수
+frontend/.env.local
+frontend/.env.development
+frontend/.env.production
+
+# 에디터
+.vscode/
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
