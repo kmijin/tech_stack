@@ -78,8 +78,8 @@ export const GREP_DEFS: GrepDef[] = [
   {
     key: 'vite_plugin_usage',
     label: 'vite.config 플러그인 API 사용 수',
-    bash:        `grep -c "plugins" "$ROOT/vite.config."* 2>/dev/null || echo 0`,
-    powershell:  `(Select-String -Path "$Root\\vite.config.*" -Pattern 'plugins' -ErrorAction SilentlyContinue | Measure-Object).Count`,
+    bash:        `find "$ROOT" -maxdepth 2 -name "vite.config.*" | xargs grep -l "plugins" 2>/dev/null | wc -l | tr -d ' '`,
+    powershell:  `(Get-ChildItem -Path "$Root" -Depth 2 -Include vite.config.ts,vite.config.js,vite.config.mjs,vite.config.cjs -ErrorAction SilentlyContinue | Select-String -Pattern 'plugins' -ErrorAction SilentlyContinue).Path | Sort-Object -Unique | Measure-Object | Select-Object -ExpandProperty Count`,
   },
 ]
 
@@ -103,8 +103,8 @@ function requiredKeys(stackId: string, from: number, to: number): string[] {
     keys.push('querydsl_config')
   }
   if (stackId === 'react') {
-    if (from < 18) keys.push('class_components')
-    if (from < 19) keys.push('react_dom_render')
+    if (from < 18 && to >= 18) keys.push('class_components')
+    if (from < 19 && to >= 19) keys.push('react_dom_render')
   }
   if (stackId === 'zustand') {
     if (from < 5 && to >= 5) keys.push('zustand_default_import')

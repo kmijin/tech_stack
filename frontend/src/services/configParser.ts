@@ -12,6 +12,7 @@ export type FileType =
   | 'build.gradle'
   | 'build.gradle.kts'
   | 'pom.xml'
+  | 'gradle.properties'
   | 'unknown'
 
 export interface ParseResult {
@@ -29,6 +30,7 @@ export function detectFileType(filename: string, content: string): FileType {
   if (name === 'build.gradle.kts') return 'build.gradle.kts'
   if (name === 'build.gradle') return 'build.gradle'
   if (name === 'pom.xml') return 'pom.xml'
+  if (name === 'gradle.properties') return 'gradle.properties'
 
   // 내용으로 추론
   if (content.trim().startsWith('{') && content.includes('"dependencies"')) return 'package.json'
@@ -156,11 +158,10 @@ function parsePackageJson(content: string): ParseResult {
   }
 
   const map: [string, string, keyof ParsedVersions][] = [
-    ['react',                  'react',      'react'],
-    ['react-dom',              'react',      'react'],
-    ['vite',                   'vite',       'vite'],
-    ['zustand',                'zustand',    'zustand'],
-    ['@tanstack/react-query',  'zustand',    'zustand'],  // react-query도 참고
+    ['react',     'react',   'react'],
+    ['react-dom', 'react',   'react'],
+    ['vite',      'vite',    'vite'],
+    ['zustand',   'zustand', 'zustand'],
   ]
 
   for (const [pkg, label, key] of map) {
@@ -325,20 +326,79 @@ function parsePomXml(content: string): ParseResult {
   return { fileType: 'pom.xml', versions, evidence, warnings }
 }
 
+// ── gradle.properties 파서 ───────────────────────────────
+function parseGradleProperties(content: string): ParseResult {
+  const evidence: ParseResult['evidence'] = []
+  const warnings: string[] = []
+  const versions: ParsedVersions = {}
+
+  // key=value 형식으로 파싱 (주석 제외)
+  const props: Record<string, string> = {}
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eq = trimmed.indexOf('=')
+    if (eq === -1) continue
+    const key = trimmed.slice(0, eq).trim()
+    const val = trimmed.slice(eq + 1).trim()
+    props[key] = val
+  }
+
+  // Spring Boot 버전 관련 키
+  const sbKeys = ['springBootVersion', 'spring_boot_version', 'springboot.version', 'spring.boot.version']
+  for (const k of sbKeys) {
+    if (props[k]) {
+      const v = cleanVersion(props[k])
+      versions.springboot = v
+      evidence.push({ key: k, raw: props[k], extracted: v })
+      break
+    }
+  }
+
+  // Java 버전 관련 키
+  const javaKeys = ['javaVersion', 'java_version', 'java.version', 'sourceCompatibility', 'targetCompatibility']
+  for (const k of javaKeys) {
+    if (props[k]) {
+      const v = cleanVersion(props[k])
+      versions.java = v
+      evidence.push({ key: k, raw: props[k], extracted: v })
+      break
+    }
+  }
+
+  // QueryDSL 버전 관련 키
+  const qdslKeys = ['querydslVersion', 'querydsl_version', 'querydsl.version']
+  for (const k of qdslKeys) {
+    if (props[k]) {
+      const v = cleanVersion(props[k])
+      versions.querydsl = v
+      evidence.push({ key: k, raw: props[k], extracted: v })
+      break
+    }
+  }
+
+  if (Object.keys(versions).length === 0) {
+    warnings.push('버전 관련 프로퍼티를 찾지 못했습니다. springBootVersion, javaVersion 등의 키를 확인하세요.')
+  }
+
+  return { fileType: 'gradle.properties', versions, evidence, warnings }
+}
+
 // ── 메인 파서 ─────────────────────────────────────────────
 export function parseConfigFile(filename: string, content: string): ParseResult {
   const fileType = detectFileType(filename, content)
   switch (fileType) {
-    case 'package.json':      return parsePackageJson(content)
-    case 'build.gradle':      return parseGradle(content, false)
-    case 'build.gradle.kts':  return parseGradle(content, true)
-    case 'pom.xml':           return parsePomXml(content)
+    case 'package.json':        return parsePackageJson(content)
+    case 'build.gradle':        return parseGradle(content, false)
+    case 'build.gradle.kts':    return parseGradle(content, true)
+    case 'pom.xml':             return parsePomXml(content)
+    case 'gradle.properties':   return parseGradleProperties(content)
     default:
       return {
         fileType: 'unknown',
         versions: {},
         evidence: [],
-        warnings: ['지원하지 않는 파일 형식입니다. package.json / build.gradle / pom.xml 을 사용해주세요.'],
+        warnings: ['지원하지 않는 파일 형식입니다. package.json / build.gradle / gradle.properties / pom.xml 을 사용해주세요.'],
       }
   }
 }
