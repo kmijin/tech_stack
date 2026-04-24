@@ -164,10 +164,19 @@ function parsePomXml(content: string): ParseResult {
     return { fileType: 'pom.xml', versions, evidence, warnings: ['XML 파싱 실패'] }
   }
 
+  // xmlns 네임스페이스가 있으면 querySelector가 동작하지 않으므로
+  // getElementsByTagName 사용 (네임스페이스 무관하게 로컬명으로 검색)
+  const byTag = (tag: string): Element | null =>
+    doc.getElementsByTagName(tag)[0] ?? null
+
+  const childText = (parent: Element | null, tag: string): string =>
+    parent?.getElementsByTagName(tag)[0]?.textContent?.trim() ?? ''
+
   // Spring Boot parent version
-  const parentGroupId = doc.querySelector('parent > groupId')?.textContent ?? ''
-  if (parentGroupId.includes('spring-boot')) {
-    const parentVer = doc.querySelector('parent > version')?.textContent ?? ''
+  const parentEl = byTag('parent')
+  const parentGroupId = childText(parentEl, 'groupId')
+  if (parentGroupId.includes('springframework')) {
+    const parentVer = childText(parentEl, 'version')
     if (parentVer) {
       const v = cleanVersion(parentVer)
       versions.springboot = v
@@ -175,8 +184,9 @@ function parsePomXml(content: string): ParseResult {
     }
   }
 
-  // properties
-  const getText = (tag: string) => doc.querySelector(`properties > ${tag}`)?.textContent ?? ''
+  // properties — getElementsByTagName으로 dot 포함 태그명도 정확히 검색
+  const propertiesEl = byTag('properties')
+  const getText = (tag: string): string => childText(propertiesEl, tag)
 
   const javaVersion = getText('java.version') || getText('maven.compiler.source')
   if (javaVersion) {
@@ -187,11 +197,12 @@ function parsePomXml(content: string): ParseResult {
 
   // Spring Boot dependency (spring-boot-starter-parent 아닌 경우)
   if (!versions.springboot) {
-    const sbDep = [...doc.querySelectorAll('dependency')].find(
-      d => d.querySelector('artifactId')?.textContent?.startsWith('spring-boot')
+    const deps = [...doc.getElementsByTagName('dependency')]
+    const sbDep = deps.find(
+      d => d.getElementsByTagName('artifactId')[0]?.textContent?.startsWith('spring-boot')
     )
     if (sbDep) {
-      const ver = sbDep.querySelector('version')?.textContent ?? ''
+      const ver = sbDep.getElementsByTagName('version')[0]?.textContent?.trim() ?? ''
       if (ver) {
         const v = cleanVersion(ver)
         versions.springboot = v
@@ -201,11 +212,12 @@ function parsePomXml(content: string): ParseResult {
   }
 
   // QueryDSL
-  const qdslDep = [...doc.querySelectorAll('dependency')].find(
-    d => d.querySelector('groupId')?.textContent === 'com.querydsl'
+  const deps = [...doc.getElementsByTagName('dependency')]
+  const qdslDep = deps.find(
+    d => d.getElementsByTagName('groupId')[0]?.textContent === 'com.querydsl'
   )
   if (qdslDep) {
-    const ver = qdslDep.querySelector('version')?.textContent ?? ''
+    const ver = qdslDep.getElementsByTagName('version')[0]?.textContent?.trim() ?? ''
     if (ver) {
       const v = cleanVersion(ver)
       versions.querydsl = v
@@ -213,7 +225,7 @@ function parsePomXml(content: string): ParseResult {
     }
   }
 
-  if (parentGroupId && !parentGroupId.includes('spring-boot')) {
+  if (parentGroupId && !parentGroupId.includes('springframework')) {
     warnings.push(`다른 parent (${parentGroupId}) 사용 중 — Spring Boot 버전이 간접 포함될 수 있습니다.`)
   }
 
