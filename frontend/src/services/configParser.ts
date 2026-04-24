@@ -48,6 +48,95 @@ function cleanVersion(v: string): string {
     .trim()
 }
 
+// ── 의존성 호환성 어드바이저리 ────────────────────────────────
+const DEP_RULES: Record<string, { label: string; check: (v: string) => string | null }> = {
+  'lombok': {
+    label: 'Lombok',
+    check: (v) => {
+      const [, minor, patch] = v.split('.').map(Number)
+      if (minor === 18 && patch < 36)
+        return `Lombok ${v} — Java 21+ 컴파일러 내부 API 변경으로 빌드 오류 가능. 1.18.36 이상 권장`
+      return null
+    },
+  },
+  'jjwt-api': {
+    label: 'jjwt',
+    check: (v) => {
+      if (v.startsWith('0.10') || v.startsWith('0.11'))
+        return `jjwt ${v} — 구버전. Java 17+ 리플렉션 강화로 런타임 오류 가능. 0.12.x 이상 권장`
+      return null
+    },
+  },
+  'firebase-admin': {
+    label: 'Firebase Admin',
+    check: (v) => {
+      if (parseInt(v) < 9)
+        return `firebase-admin ${v} — 9.x 미만은 Java 21+ 호환성 미보장. 9.x 이상 권장`
+      return null
+    },
+  },
+  'mysql-connector-j': {
+    label: 'MySQL Connector/J',
+    check: (v) => {
+      if (parseInt(v) < 8)
+        return `mysql-connector-j ${v} — 8.x 미만은 Java 21+ 에서 TLS 핸드셰이크 오류 가능. 8.x 이상 권장`
+      return null
+    },
+  },
+}
+
+// Gradle 의존성 버전 추출 (short form / long form 모두 처리)
+function extractGradleDeps(content: string): Record<string, string> {
+  const deps: Record<string, string> = {}
+  let m: RegExpExecArray | null
+
+  // 'group:artifact:version'
+  const shortRe = /['"][^'"]*:([\w.-]+):([0-9][^'"]*)['"]/g
+  while ((m = shortRe.exec(content)) !== null)
+    deps[m[1].toLowerCase()] = m[2].trim()
+
+  // name: 'artifact', ..., version: 'x' (같은 행)
+  const longRe = /name\s*:\s*['"]([^'"]+)['"]\s*,\s*version\s*:\s*['"]([^'"]+)['"]/g
+  while ((m = longRe.exec(content)) !== null)
+    deps[m[1].toLowerCase()] = m[2].trim()
+
+  // version: 'x', ..., name: 'artifact'
+  const longRe2 = /version\s*:\s*['"]([^'"]+)['"]\s*,\s*name\s*:\s*['"]([^'"]+)['"]/g
+  while ((m = longRe2.exec(content)) !== null)
+    deps[m[2].toLowerCase()] = m[1].trim()
+
+  return deps
+}
+
+function checkGradleAdvisories(content: string): string[] {
+  const deps = extractGradleDeps(content)
+  const warnings: string[] = []
+  for (const [artifact, rule] of Object.entries(DEP_RULES)) {
+    const ver = deps[artifact.toLowerCase()]
+    if (ver) {
+      const w = rule.check(ver)
+      if (w) warnings.push(w)
+    }
+  }
+  return warnings
+}
+
+function checkPomAdvisories(doc: Document): string[] {
+  const warnings: string[] = []
+  const depEls = [...doc.getElementsByTagName('dependency')]
+  for (const dep of depEls) {
+    const artifactId = dep.getElementsByTagName('artifactId')[0]?.textContent?.trim() ?? ''
+    const version    = dep.getElementsByTagName('version')[0]?.textContent?.trim() ?? ''
+    if (!version || version.startsWith('$')) continue
+    const rule = DEP_RULES[artifactId.toLowerCase()]
+    if (rule) {
+      const w = rule.check(version)
+      if (w) warnings.push(w)
+    }
+  }
+  return warnings
+}
+
 // ── package.json 파서 ──────────────────────────────────────
 function parsePackageJson(content: string): ParseResult {
   const evidence: ParseResult['evidence'] = []
@@ -147,6 +236,8 @@ function parseGradle(content: string, kts: boolean): ParseResult {
     warnings.push('Kotlin DSL이 섞인 Groovy 파일로 보입니다. .kts 파일을 붙여넣으세요.')
   }
 
+  warnings.push(...checkGradleAdvisories(content))
+
   return { fileType: kts ? 'build.gradle.kts' : 'build.gradle', versions, evidence, warnings }
 }
 
@@ -228,6 +319,8 @@ function parsePomXml(content: string): ParseResult {
   if (parentGroupId && !parentGroupId.includes('springframework')) {
     warnings.push(`다른 parent (${parentGroupId}) 사용 중 — Spring Boot 버전이 간접 포함될 수 있습니다.`)
   }
+
+  warnings.push(...checkPomAdvisories(doc))
 
   return { fileType: 'pom.xml', versions, evidence, warnings }
 }

@@ -14,6 +14,7 @@ npm run dev
 
 - **실시간 버전 조회** — npm, GitHub Releases, Adoptium API에서 최신 버전 자동 수집
 - **설정 파일 파싱** — `package.json` / `build.gradle` / `pom.xml` 업로드 또는 붙여넣기로 현재 버전 자동 추출
+- **의존성 호환성 경고** — 파싱 시 Lombok, jjwt, Firebase Admin 등 주요 의존성의 알려진 호환성 문제를 자동 감지해 경고 표시
 - **맞춤 권장사항** — 현재 버전 기준 Breaking Changes 및 신기능 안내
 - **마이그레이션 분석** — 현재 → 목표 버전 범위의 변경사항 필터링 및 복잡도 산정
 - **스캔 스크립트 생성** — 대규모 프로젝트용 bash / PowerShell 스크립트 자동 생성 및 결과 분석

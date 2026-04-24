@@ -65,6 +65,18 @@ src/
 
 추출 근거(어떤 필드에서 어떤 값을 뽑았는지)를 화면에 표시.
 
+#### 의존성 호환성 어드바이저리
+
+버전 추출 후 주요 의존성의 알려진 호환성 문제를 자동 감지해 경고로 표시.  
+`build.gradle`, `build.gradle.kts`, `pom.xml` 모두 지원.
+
+| 의존성 | 경고 조건 | 권장 조치 |
+|--------|----------|----------|
+| Lombok | `1.18.35` 이하 | `1.18.36` 이상으로 업그레이드 (Java 21+ 컴파일러 내부 API 변경 대응) |
+| jjwt | `0.10.x` / `0.11.x` | `0.12.x` 이상으로 업그레이드 (Java 17+ 리플렉션 강화 대응) |
+| Firebase Admin | `9.x` 미만 | `9.x` 이상으로 업그레이드 (Java 21+ 호환성) |
+| MySQL Connector/J | `8.x` 미만 | `8.x` 이상으로 업그레이드 (Java 21+ TLS 핸드셰이크 오류 방지) |
+
 ---
 
 ### 3. 버전 입력 패널 (현재 / 목표)
@@ -195,7 +207,9 @@ TechNewsBoard
 | 함수 | 위치 | 설명 |
 |------|------|------|
 | `fetchAllLatestVersions()` | `versionService.ts` | 3개 API 병렬 조회, 폴백 포함 |
-| `parseConfigFile(filename, content)` | `configParser.ts` | 파일명/내용으로 타입 감지 후 파싱 |
+| `parseConfigFile(filename, content)` | `configParser.ts` | 파일명/내용으로 타입 감지 후 파싱, 의존성 어드바이저리 경고 포함 |
+| `checkGradleAdvisories(content)` | `configParser.ts` | Gradle 파일에서 의존성 버전 추출 후 호환성 경고 반환 |
+| `checkPomAdvisories(doc)` | `configParser.ts` | pom.xml DOM에서 의존성 버전 검사 후 호환성 경고 반환 |
 | `generateScript(migrations, platform)` | `migrationScript.ts` | bash / PowerShell 스크립트 문자열 생성 |
 | `parseScanResult(json)` | `migrationScript.ts` | bash JSON / PowerShell JSON 양쪽 파싱 |
 | `requiredKeys(stackId, from, to)` | `migrationScript.ts` | 마이그레이션 경로에 필요한 grep 키 목록 반환 |
