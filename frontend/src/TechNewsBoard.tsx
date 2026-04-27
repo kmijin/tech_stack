@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Cpu, Zap, Globe, Package, GitBranch, AlertTriangle,
   CheckCircle, ExternalLink, ChevronDown, ChevronUp,
@@ -15,10 +15,15 @@ import {
 } from './services/migrationScript'
 import type { ScriptInput, ScanResult } from './services/migrationScript'
 import {
-  scanFolder, pickFolder, isFolderPickerSupported,
+  scanFolder, pickFolder, isFolderPickerSupported, PATTERNS, KEY_EXTS,
 } from './services/folderScanner'
 import type { ScanProgress, FolderScanResult } from './services/folderScanner'
 import { FIX_GUIDES } from './services/migrationGuide'
+import {
+  simulateNpm, simulateJava,
+  NPM_QUICK_PICKS, JAVA_QUICK_PICKS,
+} from './services/compatSimulator'
+import type { SimResult } from './services/compatSimulator'
 
 // ─────────────────────────────────────────────
 // Types
@@ -1203,6 +1208,678 @@ function MigrationSection({
 }
 
 // ─────────────────────────────────────────────
+// Compat Simulator
+// ─────────────────────────────────────────────
+
+const SIM_STATUS_CFG = {
+  ok:      { label: '호환',   cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle,   color: 'text-emerald-600', bg: 'border-emerald-200 bg-emerald-50' },
+  warn:    { label: '경고',   cls: 'bg-amber-100 text-amber-700 border-amber-200',       icon: AlertTriangle, color: 'text-amber-600',   bg: 'border-amber-200 bg-amber-50' },
+  conflict:{ label: '충돌',   cls: 'bg-red-100 text-red-700 border-red-200',             icon: X,             color: 'text-red-600',     bg: 'border-red-200 bg-red-50' },
+  unknown: { label: '미확인', cls: 'bg-gray-100 text-gray-600 border-gray-200',          icon: Info,          color: 'text-gray-500',    bg: 'border-gray-200 bg-gray-50' },
+} as const
+
+function CompatSimulator({ currentVersions }: { currentVersions: Record<string, string> }) {
+  const [ecosystem, setEcosystem]       = useState<'npm' | 'java'>('npm')
+  const [pkgName, setPkgName]           = useState('')
+  const [pkgVersion, setPkgVersion]     = useState('')
+  const [groupId, setGroupId]           = useState('')
+  const [artifactId, setArtifactId]     = useState('')
+  const [javaVer, setJavaVer]           = useState('')
+  const [overrides, setOverrides]       = useState<Record<string, string>>({})
+  const [showOverride, setShowOverride] = useState(false)
+  const [result, setResult]             = useState<SimResult | null>(null)
+  const [loading, setLoading]           = useState(false)
+  const [error, setError]               = useState<string | null>(null)
+
+  const effectiveVersions = useMemo(
+    () => ({ ...currentVersions, ...overrides }),
+    [currentVersions, overrides],
+  )
+
+  const canRun = ecosystem === 'npm'
+    ? pkgName.trim() !== ''
+    : groupId.trim() !== '' && artifactId.trim() !== '' && javaVer.trim() !== ''
+
+  async function run() {
+    if (!canRun) return
+    setLoading(true); setError(null); setResult(null)
+    try {
+      if (ecosystem === 'npm') {
+        setResult(await simulateNpm(pkgName.trim(), pkgVersion.trim() || undefined, effectiveVersions))
+      } else {
+        setResult(simulateJava(groupId.trim(), artifactId.trim(), javaVer.trim(), effectiveVersions))
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '시뮬레이션 실패')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function applyQuickPick(pick: typeof JAVA_QUICK_PICKS[number]) {
+    setGroupId(pick.groupId); setArtifactId(pick.artifactId); setJavaVer('')
+    setResult(null); setError(null)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* 입력 패널 */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+
+        {/* 생태계 선택 */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-semibold text-gray-500">생태계</span>
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-semibold">
+            {(['npm', 'java'] as const).map(eco => (
+              <button key={eco}
+                onClick={() => { setEcosystem(eco); setResult(null); setError(null) }}
+                className={`px-3 py-1.5 transition-colors ${
+                  ecosystem === eco
+                    ? eco === 'npm' ? 'bg-red-500 text-white' : 'bg-orange-500 text-white'
+                    : 'bg-white text-gray-500 hover:bg-gray-50'
+                }`}>
+                {eco === 'npm' ? 'npm (프론트엔드)' : 'Maven / Gradle (백엔드)'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 빠른 선택 */}
+        <div>
+          <p className="text-[10px] font-semibold text-gray-400 mb-1.5">빠른 선택</p>
+          <div className="flex flex-wrap gap-1.5">
+            {ecosystem === 'npm'
+              ? NPM_QUICK_PICKS.map(p => (
+                  <button key={p}
+                    onClick={() => { setPkgName(p); setPkgVersion(''); setResult(null); setError(null) }}
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all
+                      ${pkgName === p
+                        ? 'border-red-400 text-red-700 bg-red-50 font-bold'
+                        : 'border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600 bg-white'}`}>
+                    {p}
+                  </button>
+                ))
+              : JAVA_QUICK_PICKS.map(p => (
+                  <button key={p.artifactId}
+                    onClick={() => applyQuickPick(p)}
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all
+                      ${artifactId === p.artifactId
+                        ? 'border-orange-400 text-orange-700 bg-orange-50 font-bold'
+                        : 'border-gray-200 text-gray-500 hover:border-orange-300 hover:text-orange-600 bg-white'}`}>
+                    {p.label}
+                  </button>
+                ))
+            }
+          </div>
+        </div>
+
+        {/* 패키지 입력 */}
+        {ecosystem === 'npm' ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <p className="text-[10px] font-semibold text-gray-400 mb-1">패키지 이름</p>
+              <input value={pkgName} onChange={e => setPkgName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && run()}
+                placeholder="예: axios, @tanstack/react-query"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono
+                  text-gray-700 placeholder-gray-300 focus:outline-none focus:border-red-400
+                  focus:ring-2 focus:ring-red-100 transition-all" />
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 mb-1">버전 (비우면 latest)</p>
+              <input value={pkgVersion} onChange={e => setPkgVersion(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && run()}
+                placeholder="예: 1.7.0"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono
+                  text-gray-700 placeholder-gray-300 focus:outline-none focus:border-red-400
+                  focus:ring-2 focus:ring-red-100 transition-all" />
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { label: 'Group ID',    value: groupId,    set: setGroupId,    ph: 'org.projectlombok' },
+              { label: 'Artifact ID', value: artifactId, set: setArtifactId, ph: 'lombok' },
+              { label: '버전',        value: javaVer,    set: setJavaVer,    ph: '1.18.36' },
+            ].map(({ label, value, set, ph }) => (
+              <div key={label}>
+                <p className="text-[10px] font-semibold text-gray-400 mb-1">{label}</p>
+                <input value={value} onChange={e => set(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && run()}
+                  placeholder={ph}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono
+                    text-gray-700 placeholder-gray-300 focus:outline-none focus:border-orange-400
+                    focus:ring-2 focus:ring-orange-100 transition-all" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 기준 버전 표시 + 오버라이드 */}
+        <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2.5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-semibold text-gray-400">시뮬레이션 기준 버전</p>
+            <button onClick={() => setShowOverride(v => !v)}
+              className="text-[10px] text-blue-500 hover:text-blue-700 transition-colors">
+              {showOverride ? '닫기' : '버전 직접 입력'}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {STACK.map(s => {
+              const ver = effectiveVersions[s.id]
+              if (!ver) return null
+              return (
+                <span key={s.id} className={`text-[10px] font-mono px-2 py-0.5 rounded border ${s.borderColor} ${s.color} ${s.bgColor}`}>
+                  {s.name} {ver}
+                </span>
+              )
+            })}
+            {!Object.values(effectiveVersions).some(Boolean) && (
+              <span className="text-[10px] text-gray-400">버전 미입력 — 위 "내 스택 버전 입력"에서 설정하거나 직접 입력하세요</span>
+            )}
+          </div>
+
+          {showOverride && (
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {STACK.map(s => (
+                <div key={s.id}>
+                  <p className="text-[9px] font-semibold text-gray-400 mb-1">{s.name}</p>
+                  <input
+                    value={overrides[s.id] ?? currentVersions[s.id] ?? ''}
+                    onChange={e => setOverrides(prev => ({ ...prev, [s.id]: e.target.value }))}
+                    placeholder={s.unitLabel}
+                    className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1 text-[10px] font-mono
+                      text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400 transition-all" />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end">
+          <button onClick={run} disabled={loading || !canRun}
+            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 px-4 py-2 rounded-lg
+              hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-40">
+            {loading
+              ? <><RefreshCw size={11} className="animate-spin" /> 조회 중...</>
+              : <><Zap size={11} /> 호환성 시뮬레이션</>}
+          </button>
+        </div>
+      </div>
+
+      {/* 에러 */}
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex items-center gap-2">
+          <AlertTriangle size={13} className="text-red-500 shrink-0" />
+          <p className="text-xs text-red-700">{error}</p>
+        </div>
+      )}
+
+      {/* 결과 */}
+      {result && (() => {
+        const status = result.type === 'npm' ? result.overallStatus
+          : result.overallStatus === 'unknown' ? 'warn' : result.overallStatus
+        const cfg = SIM_STATUS_CFG[status as keyof typeof SIM_STATUS_CFG]
+        const StatusIcon = cfg.icon
+
+        return (
+          <div className="space-y-3">
+            {/* 전체 상태 배너 */}
+            <div className={`rounded-xl border px-5 py-4 flex items-center justify-between gap-3 flex-wrap ${cfg.bg}`}>
+              <div className="flex items-center gap-3">
+                <StatusIcon size={20} className={cfg.color} />
+                <div>
+                  <p className={`text-sm font-bold ${cfg.color}`}>
+                    {result.type === 'npm'
+                      ? `${result.pkg}@${result.version}`
+                      : `${result.groupId}:${result.artifactId}:${result.version}`}
+                    &nbsp;— {cfg.label}
+                  </p>
+                  {result.type === 'npm' && result.description && (
+                    <p className="text-[11px] text-gray-500 mt-0.5">{result.description}</p>
+                  )}
+                  {result.type === 'npm' && result.license && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">License: {result.license}</p>
+                  )}
+                </div>
+              </div>
+              <span className={`text-xs font-bold px-3 py-1 rounded-full border ${cfg.cls}`}>
+                {cfg.label}
+              </span>
+            </div>
+
+            {/* npm: peerDependencies */}
+            {result.type === 'npm' && (
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs font-bold text-gray-700 mb-3 flex items-center gap-1.5">
+                  <GitBranch size={12} /> peerDependencies 확인
+                </p>
+                {result.peerDeps.length === 0 ? (
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={13} className="text-emerald-500" />
+                    <p className="text-xs text-emerald-700">peerDependencies 없음 — 다른 패키지와 버전 충돌 위험 없음</p>
+                  </div>
+                ) : (
+                  <div className="space-y-0">
+                    {result.peerDeps.map((dep, i) => {
+                      const dc = SIM_STATUS_CFG[dep.status === 'unknown' ? 'warn' : dep.status]
+                      const DepIcon = dc.icon
+                      return (
+                        <div key={i} className="flex items-start gap-3 py-2.5 border-b border-gray-100 last:border-0">
+                          <DepIcon size={13} className={`${dc.color} shrink-0 mt-0.5`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                              <span className="text-xs font-mono font-bold text-gray-800">{dep.pkg}</span>
+                              <span className="text-[10px] text-gray-400">
+                                필요: <code className="font-mono bg-gray-100 px-1 rounded">{dep.required}</code>
+                              </span>
+                              {dep.current && (
+                                <span className="text-[10px] text-gray-400">
+                                  현재: <code className={`font-mono font-bold ${dc.color}`}>{dep.current}</code>
+                                </span>
+                              )}
+                            </div>
+                            <p className={`text-[11px] ${dc.color}`}>{dep.statusMessage}</p>
+                          </div>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${dc.cls}`}>
+                            {dc.label}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Java: 호환성 체크 */}
+            {result.type === 'java' && (
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs font-bold text-gray-700 mb-3 flex items-center gap-1.5">
+                  <Shield size={12} /> 호환성 체크
+                </p>
+                <div className="space-y-0">
+                  {result.checks.map((check, i) => {
+                    const cc = SIM_STATUS_CFG[check.status]
+                    const CheckIcon = cc.icon
+                    return (
+                      <div key={i} className="flex items-start gap-3 py-2.5 border-b border-gray-100 last:border-0">
+                        <CheckIcon size={13} className={`${cc.color} shrink-0 mt-0.5`} />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-xs font-semibold text-gray-700">{check.label}</span>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${cc.cls}`}>{cc.label}</span>
+                          </div>
+                          <p className={`text-[11px] ${cc.color}`}>{check.message}</p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Java: 주의사항 */}
+            {result.type === 'java' && result.notes.length > 0 && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <p className="text-[11px] font-bold text-blue-700 mb-2 flex items-center gap-1.5">
+                  <Info size={11} /> 주의사항
+                </p>
+                <ul className="space-y-1">
+                  {result.notes.map((note, i) => (
+                    <li key={i} className="text-[11px] text-blue-700 flex items-start gap-1.5">
+                      <span className="shrink-0">·</span> {note}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* 대안 라이브러리 */}
+            {result.alternatives.length > 0 && (
+              <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+                <p className="text-[11px] font-bold text-violet-700 mb-3 flex items-center gap-1.5">
+                  <Sparkles size={11} /> 대안 라이브러리
+                </p>
+                <div className="space-y-2">
+                  {result.alternatives.map((alt, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <ArrowUpRight size={11} className="text-violet-500 shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-violet-700">
+                        <span className="font-bold font-mono">{alt.name}</span>
+                        <span className="text-violet-500 ml-2">— {alt.description}</span>
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// Code Analyzer
+// ─────────────────────────────────────────────
+
+interface CodeFinding {
+  key: string
+  lineNumber: number
+  originalLine: string
+  fixSuggestion: string | null
+  guide: typeof FIX_GUIDES[string] | null
+  risk: 'high' | 'medium' | 'low'
+}
+
+const RISK_META = {
+  high:   { label: '상', cls: 'bg-red-100 text-red-700 border-red-200' },
+  medium: { label: '중', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+  low:    { label: '하', cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+} as const
+
+const PATTERN_RISK: Record<string, 'high' | 'medium' | 'low'> = {
+  javax_imports:          'medium',
+  websecurity_adapter:    'high',
+  sun_imports:            'high',
+  deprecated_finalize:    'high',
+  threadlocal_usage:      'high',
+  jackson_objectmapper:   'medium',
+  querydsl_config:        'high',
+  react_dom_render:       'medium',
+  class_components:       'high',
+  zustand_default_import: 'low',
+  vite_plugin_usage:      'low',
+}
+
+const MANUAL_REVIEW_REASON: Record<string, string> = {
+  websecurity_adapter: 'SecurityFilterChain Bean 방식으로 전체 클래스 구조를 재작성해야 합니다.',
+  sun_imports:         '사용 중인 sun.* 클래스에 따라 대체 API가 다릅니다. 컴파일 에러 메시지로 하나씩 확인하세요.',
+  deprecated_finalize: 'Cleaner 또는 AutoCloseable 패턴으로 리소스 관리 방식 전반을 재설계해야 합니다.',
+  threadlocal_usage:   'Virtual Thread 환경 여부를 확인 후 ScopedValue 마이그레이션 여부를 결정하세요.',
+  querydsl_config:     'build.gradle에 :jakarta 분류자 추가 후 EntityManager import도 함께 변경해야 합니다.',
+  class_components:    '클래스 컴포넌트를 함수형으로 변환하려면 생명주기 메서드를 useEffect로 재설계해야 합니다.',
+}
+
+function analyzeCode(
+  code: string,
+  lang: 'java' | 'typescript',
+  neededKeys: string[],
+): CodeFinding[] {
+  const findings: CodeFinding[] = []
+  const lines = code.split('\n')
+  const extSet = lang === 'java'
+    ? new Set(['.java'])
+    : new Set(['.ts', '.tsx', '.js', '.jsx'])
+
+  for (const key of neededKeys) {
+    if (!PATTERNS[key]) continue
+    const allowedExts = KEY_EXTS[key]
+    if (allowedExts && ![...allowedExts].some(e => extSet.has(e))) continue
+
+    lines.forEach((line, idx) => {
+      if (!PATTERNS[key].test(line)) return
+      const fixSuggestion = LINE_TRANSFORMS[key]?.(line.trim()) ?? null
+      findings.push({
+        key,
+        lineNumber: idx + 1,
+        originalLine: line.trim(),
+        fixSuggestion,
+        guide: FIX_GUIDES[key] ?? null,
+        risk: PATTERN_RISK[key] ?? 'medium',
+      })
+    })
+  }
+
+  return findings
+}
+
+function CodeAnalyzer({
+  currentVersions,
+  targetVersions,
+}: {
+  currentVersions: Record<string, string>
+  targetVersions:  Record<string, string>
+}) {
+  const [code, setCode]             = useState('')
+  const [lang, setLang]             = useState<'java' | 'typescript'>('java')
+  const [findings, setFindings]     = useState<CodeFinding[] | null>(null)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+
+  const neededKeys = useMemo(() => {
+    const keys = new Set<string>()
+    for (const s of STACK) {
+      const cur = currentVersions[s.id]?.trim()
+      const tgt = targetVersions[s.id]?.trim()
+      if (!cur || !tgt) continue
+      const from = parseFloat(cur.replace(/[^0-9.]/g, '')) || 0
+      const to   = parseFloat(tgt.replace(/[^0-9.]/g, '')) || 0
+      requiredKeys(s.id, from, to).forEach(k => keys.add(k))
+    }
+    return [...keys]
+  }, [currentVersions, targetVersions])
+
+  const hasVersions = neededKeys.length > 0
+
+  function analyze() {
+    if (!code.trim() || !hasVersions) return
+    setFindings(analyzeCode(code, lang, neededKeys))
+    setExpandedKey(null)
+  }
+
+  const grouped: [string, CodeFinding[]][] = findings
+    ? Object.entries(
+        findings.reduce((acc, f) => {
+          if (!acc[f.key]) acc[f.key] = []
+          acc[f.key].push(f)
+          return acc
+        }, {} as Record<string, CodeFinding[]>)
+      ).sort(([, a], [, b]) => {
+        const order = { high: 0, medium: 1, low: 2 }
+        return order[a[0].risk] - order[b[0].risk]
+      })
+    : []
+
+  if (!hasVersions) {
+    return (
+      <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center shadow-sm">
+        <FileText size={24} className="text-gray-300 mx-auto mb-2" />
+        <p className="text-sm font-medium text-gray-500">위에서 현재·목표 버전을 먼저 입력하세요</p>
+        <p className="text-sm text-gray-400 mt-1">버전 범위가 설정되면 코드 분석이 활성화됩니다.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* 입력 영역 */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-semibold text-gray-500">언어</span>
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-semibold">
+            <button
+              onClick={() => setLang('java')}
+              className={`px-3 py-1.5 transition-colors ${lang === 'java' ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+            >
+              Java
+            </button>
+            <button
+              onClick={() => setLang('typescript')}
+              className={`px-3 py-1.5 transition-colors ${lang === 'typescript' ? 'bg-cyan-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+            >
+              TypeScript / React
+            </button>
+          </div>
+          <span className="text-[10px] text-gray-400 ml-auto">
+            탐지 항목: {neededKeys.map(k => GREP_DEFS.find(d => d.key === k)?.label ?? k).join(' · ')}
+          </span>
+        </div>
+
+        <textarea
+          value={code}
+          onChange={e => setCode(e.target.value)}
+          rows={12}
+          placeholder={lang === 'java'
+            ? '// Java 코드를 붙여넣으세요\nimport javax.persistence.Entity;\n\npublic class UserService {\n  ...\n}'
+            : '// TypeScript / React 코드를 붙여넣으세요\nimport create from \'zustand\';\nimport ReactDOM from \'react-dom\';\n...'}
+          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-mono
+            text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400
+            focus:ring-2 focus:ring-blue-100 transition-all resize-y"
+        />
+
+        <div className="flex justify-end gap-2">
+          {(code || findings) && (
+            <button
+              onClick={() => { setCode(''); setFindings(null) }}
+              className="text-xs text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              초기화
+            </button>
+          )}
+          <button
+            onClick={analyze}
+            disabled={!code.trim()}
+            className="flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-40"
+          >
+            <Shield size={11} /> 코드 분석
+          </button>
+        </div>
+      </div>
+
+      {/* 결과 */}
+      {findings && (
+        <div className="space-y-3">
+          {/* 요약 배너 */}
+          <div className={`rounded-xl border px-4 py-3 flex items-center justify-between flex-wrap gap-2
+            ${findings.length === 0 ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
+            {findings.length === 0 ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={14} className="text-emerald-600" />
+                  <span className="text-sm font-semibold text-emerald-700">수정 필요 항목 없음</span>
+                </div>
+                <span className="text-xs text-emerald-600">이 버전 범위에서 감지된 문제가 없습니다.</span>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-red-600" />
+                  <span className="text-sm font-semibold text-red-700">{findings.length}건 수정 필요</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {(['high', 'medium', 'low'] as const).map(r => {
+                    const cnt = findings.filter(f => f.risk === r).length
+                    if (cnt === 0) return null
+                    return (
+                      <span key={r} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${RISK_META[r].cls}`}>
+                        위험도 {RISK_META[r].label} {cnt}건
+                      </span>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* 패턴별 결과 */}
+          {grouped.map(([key, items]) => {
+            const guide    = items[0].guide
+            const risk     = items[0].risk
+            const isManual = !!MANUAL_REVIEW_REASON[key]
+            const isOpen   = expandedKey === key
+
+            return (
+              <div key={key} className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                {/* 헤더 */}
+                <button
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left flex-wrap"
+                  onClick={() => setExpandedKey(isOpen ? null : key)}
+                >
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${RISK_META[risk].cls}`}>
+                    위험도 {RISK_META[risk].label}
+                  </span>
+                  <span className="text-xs font-semibold text-gray-800 flex-1 min-w-0 truncate">
+                    {guide?.title ?? key}
+                  </span>
+                  <span className="text-[10px] text-gray-400 shrink-0">{items.length}줄 감지</span>
+                  {isManual && (
+                    <span className="text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
+                      수동 확인 필요
+                    </span>
+                  )}
+                  {isOpen
+                    ? <ChevronUp size={12} className="text-gray-400 shrink-0" />
+                    : <ChevronDown size={12} className="text-gray-400 shrink-0" />}
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-gray-100 bg-gray-50 p-4 space-y-4">
+                    {/* 수동 확인 필요 알림 */}
+                    {isManual && (
+                      <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                        <AlertTriangle size={12} className="text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[11px] font-bold text-amber-700 mb-0.5">수동 확인 필요</p>
+                          <p className="text-[11px] text-amber-700">{MANUAL_REVIEW_REASON[key]}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 줄별 결과 */}
+                    <div className="space-y-2">
+                      {items.map((finding, i) => (
+                        <div key={i} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 border-b border-gray-200">
+                            <span className="text-[9px] text-gray-500 font-mono font-semibold">Line {finding.lineNumber}</span>
+                          </div>
+                          <div className="p-3 space-y-2">
+                            <div>
+                              <p className="text-[9px] font-bold text-red-500 mb-1">수정 전</p>
+                              <pre className="text-[11px] font-mono text-red-700 bg-red-50 rounded px-2.5 py-2 overflow-x-auto border border-red-100 whitespace-pre-wrap break-all">
+                                {finding.originalLine}
+                              </pre>
+                            </div>
+                            {finding.fixSuggestion ? (
+                              <div>
+                                <p className="text-[9px] font-bold text-emerald-600 mb-1">수정 후</p>
+                                <pre className="text-[11px] font-mono text-emerald-700 bg-emerald-50 rounded px-2.5 py-2 overflow-x-auto border border-emerald-100 whitespace-pre-wrap break-all">
+                                  {finding.fixSuggestion}
+                                </pre>
+                              </div>
+                            ) : guide?.after ? (
+                              <div>
+                                <p className="text-[9px] font-bold text-emerald-600 mb-1">수정 후 (예시)</p>
+                                <pre className="text-[11px] font-mono text-gray-700 bg-emerald-50 rounded px-2.5 py-2 overflow-x-auto border border-emerald-100 max-h-40 whitespace-pre">
+                                  {guide.after}
+                                </pre>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 주의사항 */}
+                    {guide?.note && (
+                      <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5">
+                        <Info size={11} className="text-blue-600 shrink-0 mt-0.5" />
+                        <p className="text-[11px] text-blue-700">{guide.note}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────
 const TABS = ['전체', '백엔드', '프론트엔드', '툴체인'] as const
@@ -1428,6 +2105,25 @@ function handleParsed(result: ParseResult) {
           currentVersions={currentVersions}
           targetVersions={targetVersions}
           stack={enrichedStack}
+        />
+      </section>
+
+      {/* 신규 라이브러리 호환성 시뮬레이터 */}
+      <section className="mb-7">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-2">
+          <Zap size={12} className="text-indigo-500" /> 신규 라이브러리 호환성 시뮬레이터
+        </h2>
+        <CompatSimulator currentVersions={currentVersions} />
+      </section>
+
+      {/* 코드 스니펫 분석 */}
+      <section className="mb-7">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-2">
+          <FileText size={12} className="text-blue-500" /> 코드 스니펫 분석 — 수정 필요 항목 탐지
+        </h2>
+        <CodeAnalyzer
+          currentVersions={currentVersions}
+          targetVersions={targetVersions}
         />
       </section>
 

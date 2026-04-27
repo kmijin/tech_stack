@@ -9,7 +9,7 @@ const SKIP_DIRS = new Set([
   '.git', '.idea', 'out', '.vite', '.next', 'coverage', '__pycache__',
 ])
 
-const PATTERNS: Record<string, RegExp> = {
+export const PATTERNS: Record<string, RegExp> = {
   javax_imports:          /import javax\./,
   websecurity_adapter:    /WebSecurityConfigurerAdapter/,
   sun_imports:            /import sun\./,
@@ -23,7 +23,7 @@ const PATTERNS: Record<string, RegExp> = {
   vite_plugin_usage:      /plugins/,
 }
 
-const KEY_EXTS: Record<string, Set<string>> = {
+export const KEY_EXTS: Record<string, Set<string>> = {
   javax_imports:          new Set(['.java']),
   websecurity_adapter:    new Set(['.java']),
   sun_imports:            new Set(['.java']),
