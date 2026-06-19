@@ -42,6 +42,25 @@ async function fetchGithubLatest(owner: string, repo: string): Promise<VersionIn
   }
 }
 
+// ── QueryDSL (태그 형식: "QUERYDSL_5_1_0") ───────────────
+async function fetchQueryDslLatest(): Promise<VersionInfo> {
+  const res = await fetch(
+    'https://api.github.com/repos/querydsl/querydsl/releases/latest',
+    { headers: { Accept: 'application/vnd.github+json' } },
+  )
+  if (!res.ok) throw new Error('GitHub fetch failed: querydsl/querydsl')
+  const data = await res.json()
+  // "QUERYDSL_5_1_0" → "5.1.0" / 일반 "v5.1.0" 형식도 처리
+  const tag = data.tag_name as string
+  const m = tag.match(/QUERYDSL_(\d+)_(\d+)_(\d+)/)
+  const version = m ? `${m[1]}.${m[2]}.${m[3]}` : tag.replace(/^v/, '')
+  return {
+    version,
+    publishedAt: data.published_at ?? '',
+    releaseUrl: data.html_url,
+  }
+}
+
 // ── Adoptium (Eclipse Temurin) — Java LTS 최신 ────────────
 async function fetchJavaLatest(): Promise<VersionInfo> {
   // LTS 버전 목록 조회 후 가장 높은 feature version 선택
@@ -51,6 +70,7 @@ async function fetchJavaLatest(): Promise<VersionInfo> {
   if (!res.ok) throw new Error('Adoptium fetch failed')
   const data = await res.json()
   const lts: number[] = data.available_lts_releases ?? []
+  if (lts.length === 0) throw new Error('No LTS releases found')
   const latest = Math.max(...lts)
 
   // 해당 LTS의 최신 GA 릴리스 정보
@@ -82,7 +102,7 @@ export async function fetchAllLatestVersions(): Promise<Record<StackId, VersionI
     fetchNpm('react'),
     fetchNpm('vite'),
     fetchNpm('zustand'),
-    fetchGithubLatest('querydsl', 'querydsl'),
+    fetchQueryDslLatest(),
   ])
 
   function unwrap(r: PromiseSettledResult<VersionInfo>, fallback: VersionInfo): VersionInfo {

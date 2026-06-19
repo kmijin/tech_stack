@@ -205,7 +205,8 @@ function parseGradle(content: string, kts: boolean): ParseResult {
   // java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
   const javaMatch =
     content.match(/JavaVersion\.VERSION_(\d+)/) ??
-    content.match(/sourceCompatibility\s*=\s*["'](\d+)["']/) ??
+    content.match(/(?:source|target|java)Compatibility\s*=\s*["']([\d.]+)["']/) ??
+    content.match(/(?:source|target|java)Compatibility\s*=\s*([\d.]+)/) ??
     content.match(/JavaLanguageVersion\.of\((\d+)\)/) ??
     content.match(/jvmToolchain\((\d+)\)/)
   if (javaMatch) {

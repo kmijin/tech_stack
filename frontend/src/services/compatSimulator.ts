@@ -63,7 +63,7 @@ const NPM_TO_STACK_KEY: Record<string, string> = {
 // ── npm: 버전 호환성 체크 (간소화된 semver) ───────────────
 
 function parseMajor(v: string): number {
-  return parseInt(v.replace(/[^\d]/, '')) || 0
+  return parseInt(v.replace(/[^\d.]/g, '')) || 0
 }
 
 export function checkPeerDep(

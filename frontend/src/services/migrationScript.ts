@@ -86,7 +86,7 @@ export const GREP_DEFS: GrepDef[] = [
 const GREP_MAP = Object.fromEntries(GREP_DEFS.map(d => [d.key, d]))
 
 // ── 마이그레이션 경로별 필요한 grep keys ─────────────────
-type MigrationId = string  // e.g. "springboot:2.7→3.2"
+// type MigrationId = string  // e.g. "springboot:2.7→3.2"
 
 function requiredKeys(stackId: string, from: number, to: number): string[] {
   const keys: string[] = []
@@ -147,7 +147,7 @@ export function generateScript(
   if (platform === 'bash') {
     return [
       '#!/bin/bash',
-      `# Hubilon Migration Scanner — ${migrationLabel}`,
+      `# Migration Scanner — ${migrationLabel}`,
       '# 실행: bash migrate-scan.sh [프로젝트_루트_경로]',
       '# 예시: bash migrate-scan.sh /home/user/my-project',
       '',
@@ -173,7 +173,7 @@ export function generateScript(
     ].join('\n')
   } else {
     return [
-      '# Hubilon Migration Scanner (PowerShell)',
+      '# Migration Scanner (PowerShell)',
       `# 마이그레이션: ${migrationLabel}`,
       '# 실행 방법 (PowerShell에서):',
       '#   .\\migrate-scan.ps1',
