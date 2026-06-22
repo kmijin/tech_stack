@@ -107,14 +107,15 @@ function overallComplexity(breakingCount: number): { level: string; cls: string;
 const STACK: StackItem[] = [
   {
     id: 'java', name: 'Java', category: 'backend',
-    latestVersion: '25', latestLabel: 'Java 25 LTS',
-    releaseDate: '2025-09-16', status: 'lts',
+    latestVersion: '26', latestLabel: 'Java 26',
+    releaseDate: '2026-03-18', status: 'stable',
     icon: Cpu,
     color: 'text-orange-600', bgColor: 'bg-orange-50', borderColor: 'border-orange-200', iconBg: 'bg-orange-100',
     quickVersions: ['8', '11', '17', '21', '25'], unitLabel: '예: 17',
-    summary: 'Java 25가 2025년 9월 LTS 출시. 18개 JEP. 힙 최적화, 저지연 GC, Scoped Values 정식화.',
-    link: 'https://openjdk.org/projects/jdk/25/',
+    summary: 'Java 26 (2026-03, 비 LTS) 출시. 버튼은 LTS 기준 — 26으로 마이그레이션하려면 직접 입력하세요. 최신 LTS는 Java 25.',
+    link: 'https://openjdk.org/projects/jdk/26/',
     features: [
+      { text: 'Java 26 — 2026년 3월 비 LTS 릴리스. 프로덕션 권장 LTS는 Java 25 (2025-09)', type: 'tip', sinceVersion: '26' },
       { text: 'JEP 519 — Compact Object Headers: 객체 헤더 64→32bit, 힙 메모리 10~20% 절감', type: 'new', sinceVersion: '25' },
       { text: 'JEP 521 — Generational Shenandoah GC: 저지연·예측 가능한 응답시간 확보', type: 'new', sinceVersion: '25' },
       { text: 'JEP 506 — Scoped Values 정식화: ThreadLocal 대체, Virtual Thread 환경 안전한 값 공유', type: 'new', sinceVersion: '25' },
@@ -283,7 +284,7 @@ const STACK: StackItem[] = [
 ]
 
 const COMPAT: CompatItem[] = [
-  { name: 'Java 25 ↔ Spring Boot 4.0.5', compatible: 'ok', note: 'Spring Boot 4는 Java 17+ 요구. Java 25 완전 지원.', relatedIds: ['java', 'springboot'] },
+  { name: 'Java 26 ↔ Spring Boot 4.0.5', compatible: 'ok', note: 'Spring Boot 4는 Java 17+ 요구. Java 25 LTS / Java 26 모두 완전 지원.', relatedIds: ['java', 'springboot'] },
   { name: 'QueryDSL 5.1 ↔ Spring Boot 4', compatible: 'warn', note: 'querydsl-jpa:5.1.0:jakarta 의존성 명시 필요.', relatedIds: ['querydsl', 'springboot'] },
   { name: 'MapStruct ↔ Lombok ↔ Records', compatible: 'warn', note: 'annotationProcessor 순서: Lombok → MapStruct 고정 필요.', relatedIds: ['java', 'springboot'] },
   { name: 'React 19.2 ↔ Zustand v5', compatible: 'ok', note: 'Zustand v5는 React 18+ 요구. React 19 완전 지원.', relatedIds: ['react', 'zustand'] },
@@ -3046,7 +3047,7 @@ function handleParsed(result: ParseResult) {
       <footer className="pt-5 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-400">
         <span className="font-medium text-gray-500">Tech News Board</span>
         <div className="flex items-center gap-3">
-          <span>Java 25 LTS</span><span>·</span>
+          <span>Java 26 (LTS: 25)</span><span>·</span>
           <span>Spring Boot 4.0.5</span><span>·</span>
           <span>React 19.2</span><span>·</span>
           <span>Vite 8</span><span>·</span>
