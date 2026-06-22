@@ -56,6 +56,7 @@ interface StackItem {
   features: Feature[]
   link: string
   quickVersions: string[]
+  ltsVersions?: string[]
   unitLabel: string
 }
 interface CompatItem {
@@ -107,12 +108,12 @@ function overallComplexity(breakingCount: number): { level: string; cls: string;
 const STACK: StackItem[] = [
   {
     id: 'java', name: 'Java', category: 'backend',
-    latestVersion: '26', latestLabel: 'Java 26',
+    latestVersion: '26', latestLabel: '26.0.1',
     releaseDate: '2026-03-18', status: 'stable',
     icon: Cpu,
     color: 'text-orange-600', bgColor: 'bg-orange-50', borderColor: 'border-orange-200', iconBg: 'bg-orange-100',
-    quickVersions: ['8', '11', '17', '21', '25'], unitLabel: '예: 17',
-    summary: 'Java 26 (2026-03, 비 LTS) 출시. 버튼은 LTS 기준 — 26으로 마이그레이션하려면 직접 입력하세요. 최신 LTS는 Java 25.',
+    quickVersions: ['8', '11', '17', '21', '25', '26'], ltsVersions: ['8', '11', '17', '21', '25'], unitLabel: '예: 17',
+    summary: 'Java 26 (2026-03, 비 LTS) 출시. 파란 버튼이 LTS 버전. 프로덕션 안정성 우선이면 Java 25 LTS 권장.',
     link: 'https://openjdk.org/projects/jdk/26/',
     features: [
       { text: 'Java 26 — 2026년 3월 비 LTS 릴리스. 프로덕션 권장 LTS는 Java 25 (2025-09)', type: 'tip', sinceVersion: '26' },
@@ -445,13 +446,12 @@ function StackCard({ item, currentVersion, viewVersion, onViewVersionChange }: {
         <div className="flex items-center gap-1.5 mt-3 flex-wrap">
           <span className="text-[10px] text-gray-400 shrink-0">버전 히스토리</span>
           {item.quickVersions.map((v) => {
-            // 별표: latestLabel과 prefix 매칭되는 것 중 가장 구체적인 하나에만 표시
-            // 예: latestLabel="25.0.3", 후보=["25","25.0"] → "25.0"이 더 구체적 → "25.0"에만 별
             const candidates = item.quickVersions.filter(
               qv => qv === item.latestLabel || item.latestLabel.startsWith(qv + '.')
             )
             const latestBadge = candidates.sort((a, b) => b.length - a.length)[0]
-            const isLatest = v === latestBadge
+            const isLatest  = v === latestBadge
+            const isLts     = item.ltsVersions?.includes(v) ?? false
             const isSelected = viewVersion === v
             return (
               <button
@@ -462,10 +462,12 @@ function StackCard({ item, currentVersion, viewVersion, onViewVersionChange }: {
                     ? `${item.bgColor} ${item.color} ${item.borderColor} font-bold ring-2 ring-offset-1 ring-current`
                     : isLatest
                       ? `${item.bgColor} ${item.color} ${item.borderColor} font-bold hover:opacity-80`
-                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'
+                      : isLts
+                        ? 'bg-blue-50 text-blue-600 border-blue-200 font-semibold hover:bg-blue-100'
+                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'
                 }`}
               >
-                {v}{isLatest ? ' ★' : ''}
+                {v}{isLatest ? ' ★' : isLts ? ' LTS' : ''}
               </button>
             )
           })}
@@ -760,8 +762,9 @@ function StackInputPanel({
             {/* Quick versions: 항상 목표 버전으로 설정 */}
             <div className="flex flex-wrap gap-1">
               {item.quickVersions.map(v => {
-                const isCur = cur === v
-                const isTgt = tgt === v
+                const isCur  = cur === v
+                const isTgt  = tgt === v
+                const isLts  = item.ltsVersions?.includes(v) ?? false
                 return (
                   <button
                     key={v}
@@ -771,9 +774,11 @@ function StackInputPanel({
                         ? `${item.borderColor} ${item.color} ${item.bgColor} font-bold`
                         : isTgt
                         ? 'border-violet-400 text-violet-600 bg-violet-50 font-bold'
+                        : isLts
+                        ? 'border-blue-200 text-blue-600 bg-blue-50 font-semibold hover:bg-blue-100'
                         : 'border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 bg-white'}`}
                   >
-                    {v}
+                    {v}{isLts && !isCur && !isTgt ? <span className="ml-0.5 text-[7px] text-blue-400">LTS</span> : ''}
                     {isCur && <span className="absolute -top-1.5 -right-1 text-[7px] leading-none bg-blue-500 text-white rounded-full px-0.5">현</span>}
                     {isTgt && <span className="absolute -top-1.5 -right-1 text-[7px] leading-none bg-violet-500 text-white rounded-full px-0.5">목</span>}
                   </button>
