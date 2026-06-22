@@ -1479,7 +1479,7 @@ function RepoConnector({
       )}
 
       {/* Token 입력 */}
-      <div className="flex gap-2 items-center">
+      <div className="flex flex-wrap gap-2 items-center">
         <div className="flex items-center gap-1.5 text-[11px] text-gray-500 shrink-0">
           <Shield size={11} className="text-gray-400" /> Personal Access Token
         </div>
@@ -1488,11 +1488,11 @@ function RepoConnector({
           value={token}
           onChange={e => { setToken(e.target.value); onTokenChange?.(e.target.value) }}
           placeholder="ghp_xxxx  (GitHub repo 스코프)  또는  glpat-xxxx  (GitLab api 스코프)"
-          className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono
+          className="flex-1 min-w-0 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono
             text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400
             focus:ring-2 focus:ring-blue-100 transition-all"
         />
-        <span className="text-[9px] text-gray-400 shrink-0">브라우저 메모리에만 저장</span>
+        <span className="hidden sm:block text-[9px] text-gray-400 shrink-0">브라우저 메모리에만 저장</span>
       </div>
 
       {/* 진행 상태 */}
@@ -1545,6 +1545,9 @@ function RepoConnector({
                   ? <p className="text-[9px] text-emerald-600 pl-3.5">추출됨: {parsed.join(' · ')}</p>
                   : <p className="text-[9px] text-amber-500 pl-3.5">버전 정보를 찾지 못했습니다</p>
                 }
+                {f.parsed.warnings.length > 0 && (
+                  <p className="text-[9px] text-red-500 pl-3.5">⚠ {f.parsed.warnings.join(' / ')}</p>
+                )}
               </div>
             )
           })}
@@ -2692,7 +2695,7 @@ function handleParsed(result: ParseResult) {
 
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-5">
+    <div className="min-h-screen bg-gray-50 text-gray-900 p-3 sm:p-5">
 
       {/* Header */}
       <header className="mb-6">
@@ -2952,7 +2955,8 @@ function handleParsed(result: ParseResult) {
         </div>
 
         {/* 스텝 인디케이터 */}
-        <div className="flex items-center gap-2 mb-6 text-xs text-gray-400 font-medium">
+        <div className="overflow-x-auto mb-6">
+        <div className="flex items-center gap-2 text-xs text-gray-400 font-medium min-w-max">
           <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all
             ${fetchedFiles.length > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
             <span className="w-4 h-4 rounded-full bg-current opacity-20 inline-flex items-center justify-center text-[10px] font-bold">①</span>
@@ -2970,6 +2974,7 @@ function handleParsed(result: ParseResult) {
             <span className="w-4 h-4 rounded-full bg-current opacity-20 inline-flex items-center justify-center text-[10px] font-bold">③</span>
             브랜치 생성
           </span>
+        </div>
         </div>
 
         {/* ① 레포 연동 */}
