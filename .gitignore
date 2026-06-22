@@ -24,3 +24,9 @@ frontend/.env.production
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code
+.claude/
+
+# TypeScript 빌드 캐시
+frontend/tsconfig.app.tsbuildinfo
