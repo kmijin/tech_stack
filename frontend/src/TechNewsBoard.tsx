@@ -1586,7 +1586,7 @@ function BranchCreator({
   const [pushResult,   setPushResult]   = useState<string | null>(null)
   const [scanError,    setScanError]    = useState<string | null>(null)
   const [autoFixed,    setAutoFixed]    = useState<{ path: string; type: 'config' | 'source' | 'ai' }[]>([])
-  const [needsManual,  setNeedsManual]  = useState<{ path: string; patterns: { description: string; line: number; snippet: string }[] }[]>([])
+  const [needsManual,  setNeedsManual]  = useState<{ path: string; patterns: { description: string; line: number; snippet: string }[]; aiError?: string }[]>([])
 
   // 목표 버전이 바뀌면 브랜치명 자동 갱신
   useEffect(() => { setBranchName(generateBranchName(targetVersions)) }, [targetVersions])
@@ -1623,16 +1623,25 @@ function BranchCreator({
 
           if (complex.length > 0 && anthropicKey) {
             // AI 변환
+            let aiError: string | undefined
             try {
               const aiResult = await aiTransformFile(
                 file.filename, newContent ?? file.content,
                 currentVersions, targetVersions, anthropicKey,
               )
               if (aiResult) { newContent = aiResult }
-            } catch { /* AI 실패 시 단순 결과 유지 */ }
+            } catch (e) {
+              aiError = e instanceof Error ? e.message : '알 수 없는 오류'
+            }
             aiDone++
             setPushStatus(`AI 변환 중... (${aiDone}/${aiTotal})`)
-            if (newContent) fixedList.push({ path: file.path, type: 'ai' })
+            if (aiError) {
+              // AI 실패 — 단순 치환 결과만 커밋, 복잡한 패턴은 수동 확인 목록으로
+              manualList.push({ path: file.path, patterns: complex.map(p => ({ description: p.description, line: p.line, snippet: p.snippet })), aiError })
+              if (newContent) fixedList.push({ path: file.path, type: 'source' })
+            } else {
+              if (newContent) fixedList.push({ path: file.path, type: 'ai' })
+            }
           } else if (complex.length > 0 && !anthropicKey) {
             // 키 없어서 수동 확인 필요
             manualList.push({ path: file.path, patterns: complex.map(p => ({ description: p.description, line: p.line, snippet: p.snippet })) })
@@ -1830,6 +1839,12 @@ function BranchCreator({
                 {needsManual.map((f, i) => (
                   <div key={i} className="space-y-2">
                     <code className="text-[10px] font-mono text-gray-600">{f.path}</code>
+                    {f.aiError && (
+                      <p className="text-[10px] text-red-600 flex items-center gap-1 pl-2">
+                        <AlertTriangle size={10} className="shrink-0" />
+                        AI 변환 실패: {f.aiError}
+                      </p>
+                    )}
                     {f.patterns.map((p, j) => (
                       <div key={j} className="pl-2 space-y-0.5">
                         <p className="text-[10px] text-amber-700 flex items-start gap-1">
