@@ -490,7 +490,8 @@ function StackCard({ item, currentVersion, viewVersion, onViewVersionChange }: {
       </button>
 
       {open && (
-        <ul className="px-5 pb-4 pt-1 bg-gray-50 rounded-b-2xl">
+        <div className="relative rounded-b-2xl after:pointer-events-none after:absolute after:bottom-0 after:inset-x-0 after:h-8 after:rounded-b-2xl after:bg-gradient-to-t after:from-gray-50 after:to-transparent">
+        <ul className="px-5 pb-4 pt-1 bg-gray-50 rounded-b-2xl max-h-64 overflow-y-auto scrollbar-card">
           {(viewVersion
             ? (viewFeatures ?? [])
             : hasInput && affectedFeatures.length > 0
@@ -506,6 +507,7 @@ function StackCard({ item, currentVersion, viewVersion, onViewVersionChange }: {
             </li>
           )}
         </ul>
+        </div>
       )}
     </div>
   )
