@@ -29,7 +29,7 @@ import { parseRepoUrl, fetchRepoFiles, fetchSourceFiles } from './services/repoF
 import type { RepoInfo, FetchedFile } from './services/repoFetcher'
 import { rewriteConfig, getChangeSummary, rewriteSourceFile } from './services/versionRewriter'
 import { pushToBranch, generateBranchName, generateCommitMessage } from './services/repoPusher'
-import { aiTransformFile, detectComplexPatterns } from './services/aiTransformer'
+import { aiTransformFile, detectComplexPatterns, AiTransformError, AI_ERROR_CODE } from './services/aiTransformer'
 
 // ─────────────────────────────────────────────
 // Types
@@ -1570,6 +1570,7 @@ function BranchCreator({
   currentVersions,
   targetVersions,
   anthropicKey,
+  aiModel,
   onClearKey,
 }: {
   repoInfo: RepoInfo
@@ -1578,6 +1579,7 @@ function BranchCreator({
   currentVersions: Record<string, string>
   targetVersions: Record<string, string>
   anthropicKey: string
+  aiModel: 'haiku' | 'sonnet'
   onClearKey?: () => void
 }) {
   const hasTargets = Object.values(targetVersions).some(v => v.trim())
@@ -1606,8 +1608,9 @@ function BranchCreator({
   const [pushError,    setPushError]    = useState<string | null>(null)
   const [pushResult,   setPushResult]   = useState<string | null>(null)
   const [scanError,    setScanError]    = useState<string | null>(null)
+  type ManualReason = 'no_key' | 'haiku_too_large' | 'sonnet_too_large' | 'ai_error'
   const [autoFixed,    setAutoFixed]    = useState<{ path: string; type: 'config' | 'source' | 'ai' }[]>([])
-  const [needsManual,  setNeedsManual]  = useState<{ path: string; patterns: { description: string; line: number; snippet: string }[]; aiError?: string }[]>([])
+  const [needsManual,  setNeedsManual]  = useState<{ path: string; patterns: { description: string; line: number; snippet: string }[]; reason: ManualReason; aiError?: string }[]>([])
 
   // 목표 버전이 바뀌면 브랜치명 자동 갱신
   useEffect(() => { setBranchName(generateBranchName(targetVersions)) }, [targetVersions])
@@ -1645,27 +1648,31 @@ function BranchCreator({
           if (complex.length > 0 && anthropicKey) {
             // AI 변환
             let aiError: string | undefined
+            let reason: ManualReason = 'ai_error'
             try {
               const aiResult = await aiTransformFile(
                 file.filename, newContent ?? file.content,
-                currentVersions, targetVersions, anthropicKey,
+                currentVersions, targetVersions, anthropicKey, aiModel,
               )
               if (aiResult) { newContent = aiResult }
             } catch (e) {
+              if (e instanceof AiTransformError) {
+                reason = e.code === AI_ERROR_CODE.HAIKU_TOO_LARGE  ? 'haiku_too_large'
+                       : e.code === AI_ERROR_CODE.SONNET_TOO_LARGE ? 'sonnet_too_large'
+                       : 'ai_error'
+              }
               aiError = e instanceof Error ? e.message : '알 수 없는 오류'
             }
             aiDone++
             setPushStatus(`AI 변환 중... (${aiDone}/${aiTotal})`)
             if (aiError) {
-              // AI 실패 — 단순 치환 결과만 커밋, 복잡한 패턴은 수동 확인 목록으로
-              manualList.push({ path: file.path, patterns: complex.map(p => ({ description: p.description, line: p.line, snippet: p.snippet })), aiError })
+              manualList.push({ path: file.path, patterns: complex.map(p => ({ description: p.description, line: p.line, snippet: p.snippet })), reason, aiError })
               if (newContent) fixedList.push({ path: file.path, type: 'source' })
             } else {
               if (newContent) fixedList.push({ path: file.path, type: 'ai' })
             }
           } else if (complex.length > 0 && !anthropicKey) {
-            // 키 없어서 수동 확인 필요
-            manualList.push({ path: file.path, patterns: complex.map(p => ({ description: p.description, line: p.line, snippet: p.snippet })) })
+            manualList.push({ path: file.path, patterns: complex.map(p => ({ description: p.description, line: p.line, snippet: p.snippet })), reason: 'no_key' })
           } else if (newContent) {
             fixedList.push({ path: file.path, type: 'source' })
           }
@@ -1857,15 +1864,19 @@ function BranchCreator({
                 )}
               </div>
               <div className="px-4 py-2 space-y-4">
-                {needsManual.map((f, i) => (
+                {needsManual.map((f, i) => {
+                  const reasonMsg =
+                    f.reason === 'no_key'           ? { text: 'Anthropic API 키를 입력하면 자동 변환 가능합니다', cls: 'text-violet-600' } :
+                    f.reason === 'haiku_too_large'  ? { text: '파일이 너무 큽니다 — Sonnet 선택 시 전체 파일 처리 가능합니다', cls: 'text-amber-600' } :
+                    f.reason === 'sonnet_too_large' ? { text: '파일이 너무 큽니다 — 수동 변환이 필요합니다', cls: 'text-red-600' } :
+                                                      { text: `AI 변환 실패: ${f.aiError ?? '알 수 없는 오류'}`, cls: 'text-red-600' }
+                  return (
                   <div key={i} className="space-y-2">
                     <code className="text-[10px] font-mono text-gray-600">{f.path}</code>
-                    {f.aiError && (
-                      <p className="text-[10px] text-red-600 flex items-center gap-1 pl-2">
-                        <AlertTriangle size={10} className="shrink-0" />
-                        AI 변환 실패: {f.aiError}
-                      </p>
-                    )}
+                    <p className={`text-[10px] flex items-center gap-1 pl-2 ${reasonMsg.cls}`}>
+                      <AlertTriangle size={10} className="shrink-0" />
+                      {reasonMsg.text}
+                    </p>
                     {f.patterns.map((p, j) => (
                       <div key={j} className="pl-2 space-y-0.5">
                         <p className="text-[10px] text-amber-700 flex items-start gap-1">
@@ -1876,7 +1887,8 @@ function BranchCreator({
                       </div>
                     ))}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
@@ -2620,7 +2632,8 @@ export default function TechNewsBoard() {
   const [repoInfo,      setRepoInfo]      = useState<RepoInfo | null>(null)
   const [repoToken,     setRepoToken]     = useState('')
   const [fetchedFiles,  setFetchedFiles]  = useState<FetchedFile[]>([])
-  const [anthropicKey,  setAnthropicKey]  = useState('')
+  const [anthropicKey,    setAnthropicKey]    = useState('')
+  const [aiModel,         setAiModel]         = useState<'haiku' | 'sonnet'>('haiku')
   const [clearKeyAfterUse, setClearKeyAfterUse] = useState(true)
 
   const { data: liveVersions, refetch, isFetching } = useLatestVersions()
@@ -2910,11 +2923,47 @@ function handleParsed(result: ParseResult) {
             <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-2">
               <Sparkles size={12} className="text-violet-400" /> AI 코드 변환 (선택)
             </h2>
-            <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-2">
+            <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
               <p className="text-[11px] text-violet-700">
                 Anthropic API 키를 입력하면 <strong>WebSecurityConfigurerAdapter, finalize(), ThreadLocal</strong> 등
                 단순 치환으로 안 되는 복잡한 패턴도 Claude가 자동으로 수정합니다.
               </p>
+
+              {/* 모델 선택 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {([
+                  {
+                    value: 'haiku' as const,
+                    label: 'Claude Haiku',
+                    badge: '빠름·저렴',
+                    badgeCls: 'bg-emerald-100 text-emerald-700',
+                    desc: '패턴 위치 ±25줄만 전달. 대형 파일은 수동 확인으로 넘어갈 수 있습니다.',
+                  },
+                  {
+                    value: 'sonnet' as const,
+                    label: 'Claude Sonnet',
+                    badge: '정확·비쌈',
+                    badgeCls: 'bg-violet-100 text-violet-700',
+                    desc: '파일 전체를 보고 변환. 복잡한 Security 설정, 대형 클래스도 처리합니다.',
+                  },
+                ] as const).map(m => (
+                  <button
+                    key={m.value}
+                    onClick={() => setAiModel(m.value)}
+                    className={`text-left rounded-lg border px-3 py-2.5 transition-all
+                      ${aiModel === m.value
+                        ? 'border-violet-400 bg-white shadow-sm ring-2 ring-violet-100'
+                        : 'border-violet-200 bg-violet-50 hover:bg-white'}`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[11px] font-bold text-gray-700">{m.label}</span>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${m.badgeCls}`}>{m.badge}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-500 leading-relaxed">{m.desc}</p>
+                  </button>
+                ))}
+              </div>
+
               <div className="flex gap-2 items-center">
                 <span className="text-[11px] text-violet-600 shrink-0 font-medium">Anthropic API Key</span>
                 <input
@@ -2922,7 +2971,7 @@ function handleParsed(result: ParseResult) {
                   value={anthropicKey}
                   onChange={e => setAnthropicKey(e.target.value)}
                   placeholder="sk-ant-xxxx  (없으면 단순 치환만 적용)"
-                  className="flex-1 bg-white border border-violet-200 rounded-lg px-3 py-2 text-xs font-mono
+                  className="flex-1 min-w-0 bg-white border border-violet-200 rounded-lg px-3 py-2 text-xs font-mono
                     text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400
                     focus:ring-2 focus:ring-violet-100 transition-all"
                 />
@@ -2958,6 +3007,7 @@ function handleParsed(result: ParseResult) {
               currentVersions={currentVersions}
               targetVersions={targetVersions}
               anthropicKey={anthropicKey}
+              aiModel={aiModel}
               onClearKey={clearKeyAfterUse ? () => setAnthropicKey('') : undefined}
             />
           </section>
