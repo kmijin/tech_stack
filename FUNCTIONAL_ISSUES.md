@@ -1,7 +1,7 @@
 # 기능 검토 — 버그 및 개선사항
 
 > 검토일: 2026-06-22  
-> 최종 업데이트: 2026-06-22  
+> 최종 업데이트: 2026-06-22 (FUNC-09까지 전체 해결)  
 > 검토 방법: Playwright 브라우저 직접 조작 + 전체 소스코드 정적 분석
 
 ---
@@ -12,9 +12,9 @@
 |------|------|------|--------|
 | Critical | 1 | 1 | 0 |
 | High | 4 | 4 | 0 |
-| Medium | 3 | 0 | 3 |
-| Low | 2 | 0 | 2 |
-| **합계** | **10** | **5** | **5** |
+| Medium | 3 | 3 | 0 |
+| Low | 2 | 2 | 0 |
+| **합계** | **10** | **10** | **0** |
 
 ---
 
@@ -120,17 +120,15 @@ function handleUrlChange(val: string) {
 
 ---
 
-### [FUNC-07] `configParser` JSON 파싱 실패 메시지 불명확
+### ~~[FUNC-07] `configParser` JSON 파싱 실패 메시지 불명확~~ ✅ 해결
 
 - **파일**: `frontend/src/services/configParser.ts:152`
 - **증상**: `package.json`이 JSON 문법 오류인 경우 UI에서 "0개 버전 추출됨"으로만 표시. 파일이 손상된 건지 지원 버전이 없는 건지 구분 불가.
+- **해결**: `parsedFoundFiles.map()` 내부에 `f.parsed.warnings` 배열 표시 추가 — 파싱 실패 시 빨간 경고 텍스트로 원인 노출
 
 ```tsx
-// RepoBranchPanel 파일 목록 표시 부분에 추가
-{parsedFile.warnings.length > 0 && (
-  <p className="text-xs text-amber-600 mt-1">
-    ⚠ {parsedFile.warnings.join(' / ')}
-  </p>
+{f.parsed.warnings.length > 0 && (
+  <p className="text-[9px] text-red-500 pl-3.5">⚠ {f.parsed.warnings.join(' / ')}</p>
 )}
 ```
 
@@ -138,30 +136,26 @@ function handleUrlChange(val: string) {
 
 ## Low — UX · 경고성
 
-### [FUNC-08] favicon.ico 없음 — 브라우저 콘솔 404 에러
+### ~~[FUNC-08] favicon.ico 없음 — 브라우저 콘솔 404 에러~~ ✅ 해결
 
 - **파일**: `frontend/public/` 디렉토리 자체 없음
 - **증상**: 브라우저 콘솔에 `GET /favicon.ico 404` 에러가 계속 찍힘.
+- **해결**: `frontend/public/favicon.svg` 생성 + `index.html` `<head>`에 link 태그 추가
 
 ```html
-<!-- index.html <head>에 추가 -->
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-```
-
-```svg
-<!-- frontend/public/favicon.svg -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <text y="26" font-size="28">📡</text>
-</svg>
 ```
 
 ---
 
-### [FUNC-09] 모바일 / 좁은 화면 레이아웃 미지원
+### ~~[FUNC-09] 모바일 / 좁은 화면 레이아웃 미지원~~ ✅ 해결
 
 - **파일**: `frontend/src/TechNewsBoard.tsx` (전반)
 - **증상**: 1,024px 미만 화면에서 카드 그리드가 넘치거나 입력 필드가 잘림.
-- **수정 방향**: 버전 카드 그리드 `grid-cols-3 → sm:grid-cols-2 lg:grid-cols-3`, 입력 패널 `flex → flex-wrap`
+- **해결**:
+  - 외부 래퍼 `p-5` → `p-3 sm:p-5` (모바일 여백 확보)
+  - Token 입력 행 `flex` → `flex flex-wrap` + `min-w-0` + trailing text `hidden sm:block`
+  - 스텝 인디케이터 `overflow-x-auto` + `min-w-max` 로 가로 스크롤 처리
 
 ---
 
@@ -175,6 +169,6 @@ function handleUrlChange(val: string) {
 | 🔴 High | FUNC-04 | AI 실패 무시 + 오분류 | `TechNewsBoard.tsx:1624` | ✅ 해결 |
 | 🟡 Medium | FUNC-05 | `g` 플래그 누락 | `versionRewriter.ts:143` | 미해결 |
 | 🟡 Medium | FUNC-06 | URL 검사 지연 | `TechNewsBoard.tsx` | 미해결 |
-| 🟡 Medium | FUNC-07 | JSON 파싱 실패 메시지 불명확 | `configParser.ts:152` | 미해결 |
-| 🟢 Low | FUNC-08 | favicon 없음 | `frontend/public/` | 미해결 |
-| 🟢 Low | FUNC-09 | 반응형 미지원 | `TechNewsBoard.tsx` | 미해결 |
+| 🟡 Medium | FUNC-07 | JSON 파싱 실패 메시지 불명확 | `configParser.ts:152` | ✅ 해결 |
+| 🟢 Low | FUNC-08 | favicon 없음 | `frontend/public/` | ✅ 해결 |
+| 🟢 Low | FUNC-09 | 반응형 미지원 | `TechNewsBoard.tsx` | ✅ 해결 |
