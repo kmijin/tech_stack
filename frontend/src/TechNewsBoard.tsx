@@ -1401,6 +1401,7 @@ function RepoConnector({
   const [loading, setLoading]     = useState(false)
   const [progress, setProgress]   = useState<{ tried: number; total: number } | null>(null)
   const [error, setError]         = useState<string | null>(null)
+  const [urlError, setUrlError]   = useState<string | null>(null)
   const [foundFiles, setFoundFiles] = useState<FetchedFile[]>([])
   const [repoInfo, setRepoInfo]   = useState<RepoInfo | null>(null)
 
@@ -1443,7 +1444,17 @@ function RepoConnector({
       <div className="flex gap-2">
         <input
           value={url}
-          onChange={e => { setUrl(e.target.value); setError(null) }}
+          onChange={e => {
+            const val = e.target.value
+            setUrl(val)
+            setError(null)
+            // 도메인까지 입력된 상태에서만 실시간 검사 — 타이핑 중 불필요한 에러 방지
+            if (val.includes('github.com/') || val.includes('gitlab.') ) {
+              setUrlError(parseRepoUrl(val) ? null : 'owner/repo 형식을 확인하세요 (예: https://github.com/owner/repo)')
+            } else {
+              setUrlError(null)
+            }
+          }}
           onKeyDown={e => e.key === 'Enter' && fetch_()}
           placeholder="https://github.com/owner/repo  또는  https://gitlab.com/owner/repo"
           className={`flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono
@@ -1461,6 +1472,11 @@ function RepoConnector({
             : <><Download size={11} /> 가져오기</>}
         </button>
       </div>
+      {urlError && (
+        <p className="text-[11px] text-red-500 flex items-center gap-1 -mt-1">
+          <AlertTriangle size={10} className="shrink-0" /> {urlError}
+        </p>
+      )}
 
       {/* Token 입력 */}
       <div className="flex gap-2 items-center">
