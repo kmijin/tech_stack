@@ -27,7 +27,7 @@ import {
 import type { SimResult } from './services/compatSimulator'
 import { parseRepoUrl, fetchRepoFiles, fetchSourceFiles } from './services/repoFetcher'
 import type { RepoInfo, FetchedFile } from './services/repoFetcher'
-import { rewriteConfig, getChangeSummary, rewriteSourceFile } from './services/versionRewriter'
+import { rewriteConfig, getChangeSummary, rewriteSourceFile, deriveCompatibleTargets } from './services/versionRewriter'
 import { pushToBranch, generateBranchName, generateCommitMessage } from './services/repoPusher'
 import { aiTransformFile, detectComplexPatterns, AiTransformError, AI_ERROR_CODE } from './services/aiTransformer'
 
@@ -1584,17 +1584,22 @@ function BranchCreator({
 }) {
   const hasTargets = Object.values(targetVersions).some(v => v.trim())
 
+  const { targets: derivedTargets, derived: derivedMessages } = useMemo(
+    () => deriveCompatibleTargets(currentVersions as any, targetVersions as any),
+    [currentVersions, targetVersions],
+  )
+
   const rewritePlan = useMemo(() => {
     if (!hasTargets) return []
     return fetchedFiles
       .map(file => {
-        const newContent = rewriteConfig(file.filename, file.content, targetVersions as any)
+        const newContent = rewriteConfig(file.filename, file.content, derivedTargets as any)
         if (!newContent || newContent === file.content) return null
-        const changes = getChangeSummary(file.filename, file.content, targetVersions as any)
+        const changes = getChangeSummary(file.filename, file.content, derivedTargets as any)
         return { file, newContent, changes }
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
-  }, [fetchedFiles, targetVersions, hasTargets])
+  }, [fetchedFiles, derivedTargets, hasTargets])
 
   const allChanges = rewritePlan.flatMap(p => p.changes)
 
@@ -1726,6 +1731,17 @@ function BranchCreator({
 
   return (
     <div className="space-y-3">
+      {/* 호환성 자동 유도 경고 */}
+      {derivedMessages.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 flex gap-2 items-start">
+          <span className="text-amber-500 mt-0.5 shrink-0">⚠</span>
+          <div className="text-xs text-amber-700 space-y-0.5">
+            <p className="font-semibold">호환성 문제 감지 — 아래 버전을 자동 조정했습니다</p>
+            {derivedMessages.map((m, i) => <p key={i}>• {m}</p>)}
+          </div>
+        </div>
+      )}
+
       {/* 수정 예정 파일 목록 */}
       {rewritePlan.map(({ file, changes }, i) => (
         <div key={i} className="rounded-xl border border-gray-200 bg-white overflow-hidden">

@@ -106,6 +106,16 @@ function rewriteGradle(content: string, targets: ParsedVersions): string {
     out = out.replace(/(jvmToolchain\()\d+(\))/g, `$1${jv}$2`)
   }
 
+  if (targets.querydsl) {
+    const qdslVer = toFullVersion(targets.querydsl)
+    const classifier = parseFloat(qdslVer) >= 5 ? ':jakarta' : ''
+    // com.querydsl:querydsl-jpa:4.4.0  또는  com.querydsl:querydsl-jpa:4.4.0:jakarta
+    out = out.replace(
+      /(com\.querydsl:[^:'"]+:)\d+\.\d+\.\d+(?::[a-z]+)?/g,
+      `$1${qdslVer}${classifier}`,
+    )
+  }
+
   return out
 }
 
@@ -130,6 +140,19 @@ function rewritePomXml(content: string, targets: ParsedVersions): string {
     out = out.replace(/(<maven\.compiler\.target>)[^<]+(<\/maven\.compiler\.target>)/g, `$1${jv}$2`)
   }
 
+  if (targets.querydsl) {
+    const qdslVer = toFullVersion(targets.querydsl)
+    // <querydsl.version>4.4.0</querydsl.version>  또는  <querydsl_version>
+    out = out.replace(/(<querydsl[._]version>)[^<]+(<\/querydsl[._]version>)/gi, `$1${qdslVer}$2`)
+    // <properties> 내 <querydslVersion> 변형
+    out = out.replace(/(<querydslVersion>)[^<]+(<\/querydslVersion>)/g, `$1${qdslVer}$2`)
+    // 직접 의존성: <groupId>com.querydsl</groupId> 블록 내 <version>
+    out = out.replace(
+      /(<groupId>com\.querydsl<\/groupId>[\s\S]*?<version>)[^<]+(<\/version>)/g,
+      `$1${qdslVer}$2`,
+    )
+  }
+
   return out
 }
 
@@ -151,7 +174,42 @@ function rewriteGradleProperties(content: string, targets: ParsedVersions): stri
     out = out.replace(/(targetCompatibility\s*=\s*).+/g, `$1${jv}`)
   }
 
+  if (targets.querydsl) {
+    const qdslVer = toFullVersion(targets.querydsl)
+    out = out.replace(/(querydslVersion\s*=\s*).+/g,   `$1${qdslVer}`)
+    out = out.replace(/(querydsl_version\s*=\s*).+/g,  `$1${qdslVer}`)
+    out = out.replace(/(querydsl\.version\s*=\s*).+/g, `$1${qdslVer}`)
+  }
+
   return out
+}
+
+// ── 호환성 자동 유도 ──────────────────────────────────────
+
+/**
+ * 버전 간 호환성을 확인하여 누락된 target 버전을 자동으로 채웁니다.
+ * 예: Spring Boot 3.x 타겟 + QueryDSL 4.x 현재 → QueryDSL 5.x 자동 설정
+ */
+export function deriveCompatibleTargets(
+  fromVersions: ParsedVersions,
+  toVersions: ParsedVersions,
+): { targets: ParsedVersions; derived: string[] } {
+  const targets: ParsedVersions = { ...toVersions }
+  const derived: string[] = []
+
+  const sbTo     = parseFloat(targets.springboot ?? '0')
+  const qdslFrom = parseFloat(fromVersions.querydsl ?? '0')
+  const qdslTo   = parseFloat(targets.querydsl   ?? '0')
+
+  // Spring Boot 3.x+ ↔ QueryDSL: jakarta 패키지 필요 → 5.x 강제
+  if (sbTo >= 3.0 && qdslFrom > 0 && qdslFrom < 5.0) {
+    if (!targets.querydsl || qdslTo < 5.0) {
+      targets.querydsl = '5.1.0'
+      derived.push('QueryDSL 5.1.0 (Spring Boot 3.x 이상은 jakarta 패키지 필요)')
+    }
+  }
+
+  return { targets, derived }
 }
 
 // ── 공개 API ─────────────────────────────────────────────
