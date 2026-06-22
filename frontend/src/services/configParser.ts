@@ -304,17 +304,28 @@ function parsePomXml(content: string): ParseResult {
     }
   }
 
-  // QueryDSL
-  const deps = [...doc.getElementsByTagName('dependency')]
-  const qdslDep = deps.find(
-    d => d.getElementsByTagName('groupId')[0]?.textContent === 'com.querydsl'
-  )
-  if (qdslDep) {
-    const ver = qdslDep.getElementsByTagName('version')[0]?.textContent?.trim() ?? ''
-    if (ver) {
-      const v = cleanVersion(ver)
-      versions.querydsl = v
-      evidence.push({ key: 'querydsl dependency', raw: ver, extracted: v })
+  // QueryDSL — 먼저 <properties>에서 버전 탐색 (${...} 참조 없이 실제 값)
+  const qdslPropVer = getText('querydsl.version') || getText('querydslVersion') || getText('querydsl_version')
+  if (qdslPropVer) {
+    const v = cleanVersion(qdslPropVer)
+    versions.querydsl = v
+    evidence.push({ key: 'querydsl.version property', raw: qdslPropVer, extracted: v })
+  } else {
+    // 직접 의존성에서 탐색
+    const deps = [...doc.getElementsByTagName('dependency')]
+    const qdslDep = deps.find(
+      d => d.getElementsByTagName('groupId')[0]?.textContent === 'com.querydsl'
+    )
+    if (qdslDep) {
+      let ver = qdslDep.getElementsByTagName('version')[0]?.textContent?.trim() ?? ''
+      // Maven 프로퍼티 참조 (${querydsl.version}) → <properties>에서 resolve
+      const propRef = ver.match(/^\$\{([^}]+)\}$/)
+      if (propRef) ver = getText(propRef[1]) || ''
+      if (ver && !ver.startsWith('${')) {
+        const v = cleanVersion(ver)
+        versions.querydsl = v
+        evidence.push({ key: 'querydsl dependency', raw: ver, extracted: v })
+      }
     }
   }
 
