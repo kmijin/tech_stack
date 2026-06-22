@@ -108,12 +108,12 @@ function overallComplexity(breakingCount: number): { level: string; cls: string;
 const STACK: StackItem[] = [
   {
     id: 'java', name: 'Java', category: 'backend',
-    latestVersion: '26', latestLabel: '26.0.1',
-    releaseDate: '2026-03-18', status: 'stable',
+    latestVersion: '25', latestLabel: '25',
+    releaseDate: '2025-09-16', status: 'lts',
     icon: Cpu,
     color: 'text-orange-600', bgColor: 'bg-orange-50', borderColor: 'border-orange-200', iconBg: 'bg-orange-100',
-    quickVersions: ['8', '11', '17', '21', '25', '26'], ltsVersions: ['8', '11', '17', '21', '25'], unitLabel: '예: 17',
-    summary: 'Java 26 (2026-03, 비 LTS) 출시. 파란 버튼이 LTS 버전. 프로덕션 안정성 우선이면 Java 25 LTS 권장.',
+    quickVersions: ['8', '11', '17', '21', '25'], unitLabel: '예: 17',
+    summary: 'Java LTS 기준 표시 (8·11·17·21·25). 최신 릴리스는 Java 26 (2026-03, 비 LTS). 프로덕션은 Java 25 LTS 권장.',
     link: 'https://openjdk.org/projects/jdk/26/',
     features: [
       { text: 'Java 26 — 2026년 3월 비 LTS 릴리스. 프로덕션 권장 LTS는 Java 25 (2025-09)', type: 'tip', sinceVersion: '26' },
@@ -285,7 +285,7 @@ const STACK: StackItem[] = [
 ]
 
 const COMPAT: CompatItem[] = [
-  { name: 'Java 26 ↔ Spring Boot 4.0.5', compatible: 'ok', note: 'Spring Boot 4는 Java 17+ 요구. Java 25 LTS / Java 26 모두 완전 지원.', relatedIds: ['java', 'springboot'] },
+  { name: 'Java 25 LTS ↔ Spring Boot 4.0.5', compatible: 'ok', note: 'Spring Boot 4는 Java 17+ 요구. Java 25 LTS 완전 지원.', relatedIds: ['java', 'springboot'] },
   { name: 'QueryDSL 5.1 ↔ Spring Boot 4', compatible: 'warn', note: 'querydsl-jpa:5.1.0:jakarta 의존성 명시 필요.', relatedIds: ['querydsl', 'springboot'] },
   { name: 'MapStruct ↔ Lombok ↔ Records', compatible: 'warn', note: 'annotationProcessor 순서: Lombok → MapStruct 고정 필요.', relatedIds: ['java', 'springboot'] },
   { name: 'React 19.2 ↔ Zustand v5', compatible: 'ok', note: 'Zustand v5는 React 18+ 요구. React 19 완전 지원.', relatedIds: ['react', 'zustand'] },
@@ -3052,7 +3052,7 @@ function handleParsed(result: ParseResult) {
       <footer className="pt-5 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-400">
         <span className="font-medium text-gray-500">Tech News Board</span>
         <div className="flex items-center gap-3">
-          <span>Java 26 (LTS: 25)</span><span>·</span>
+          <span>Java 25 LTS</span><span>·</span>
           <span>Spring Boot 4.0.5</span><span>·</span>
           <span>React 19.2</span><span>·</span>
           <span>Vite 8</span><span>·</span>
