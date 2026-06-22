@@ -76,37 +76,11 @@ if (!res.ok) continue
 
 ---
 
-### [FUNC-03] 대형 레포 파일 탐색 5,000개 한도 무통보 절단
+### ~~[FUNC-03] 대형 레포 파일 탐색 5,000개 한도 무통보 절단~~ ✅ 해결
 
-- **파일**: `frontend/src/services/repoFetcher.ts:154`
-- **증상**: GitLab 레포의 파일이 5,000개를 초과하면 탐색이 조용히 멈춤. 소스 파일 일부가 누락된 채로 마이그레이션이 진행되는데 사용자는 전혀 알 수 없음.
-- **원인**: `while (page <= MAX_PAGES)` 루프가 50페이지(5,000개)에서 중단되지만, 페이지 한도 초과 여부를 외부로 알리는 반환값이 없음
-
-```ts
-// 현재 (문제) — fetchGitlabTree() 반환
-return paths  // 5,000개 초과 여부를 알 수 없음
-
-// 수정 — 반환 타입 변경
-interface TreeResult {
-  paths: string[]
-  truncated: boolean  // 한도 초과 여부
-}
-
-// 루프 내 한도 초과 감지
-let truncated = false
-while (page <= MAX_PAGES) {
-  ...
-  if (items.length < 100) break
-  if (page === MAX_PAGES) { truncated = true; break }
-  page++
-}
-return { paths, truncated }
-
-// TechNewsBoard에서 사용 시
-if (treeResult.truncated) {
-  setScanWarning('파일이 5,000개를 초과해 일부만 스캔됐습니다. 소스 변환 결과를 반드시 직접 검토하세요.')
-}
-```
+- **파일**: `frontend/src/services/repoFetcher.ts:186`
+- **원인**: `MAX_PAGES = 50` 고정값으로 5,000개에서 인위적으로 절단됨
+- **해결**: `MAX_PAGES` 제거 → `items.length < 100`(마지막 페이지) 또는 `items.length === 0`(안전장치)을 종료 조건으로 사용. 파일 수에 관계없이 전체 탐색하므로 절단 자체가 발생하지 않음
 
 ---
 

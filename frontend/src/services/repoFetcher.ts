@@ -183,8 +183,7 @@ async function fetchGitlabTree(
     try {
       const paths: string[] = []
       let page = 1
-      const MAX_PAGES = 50
-      while (page <= MAX_PAGES) {
+      while (true) {
         const res = await fetch(
           `https://${host}/api/v4/projects/${pid}/repository/tree?recursive=true&ref=${ref}&per_page=100&page=${page}`,
           { headers },
@@ -194,8 +193,9 @@ async function fetchGitlabTree(
         }
         if (!res.ok) break
         const items = await res.json() as { path: string; type: string }[]
+        if (items.length === 0) break  // 안전장치 — 빈 응답이면 중단
         paths.push(...items.filter(i => i.type === 'blob').map(i => i.path))
-        if (items.length < 100) break
+        if (items.length < 100) break  // 마지막 페이지 도달
         page++
       }
       if (paths.length > 0) return paths
