@@ -2607,12 +2607,11 @@ function CodeAnalyzer({
 // ─────────────────────────────────────────────
 
 const PAGE_TABS = ['레포 마이그레이션', '버전 현황'] as const
-// const PAGE_TABS = ['최신 스택', '마이그레이션', '레포 연동'] as const
 type PageTab = typeof PAGE_TABS[number]
 
 export default function TechNewsBoard() {
   const [pageTab, setPageTab]           = useState<PageTab>('레포 마이그레이션')
-  const [inputOpen, setInputOpen]       = useState(true)
+
   const [currentVersions, setCurrentVersions] = useState<Record<string, string>>({})
   const [targetVersions,  setTargetVersions]  = useState<Record<string, string>>({})
   const [viewVersions,    setViewVersions]    = useState<Record<string, string | null>>({})
@@ -2797,117 +2796,6 @@ function handleParsed(result: ParseResult) {
               {COMPAT.filter((_, i) => i >= 4).map(item => <CompatRow key={item.name} item={item} />)}
             </div>
           </div>
-        </section>
-
-      </>)}
-
-      {/* ─── 마이그레이션 탭 ─── (임시 비활성화) */}
-      {(false as boolean) && (pageTab as string) === '마이그레이션' && (<>
-
-        {/* 내 스택 입력 패널 */}
-        <section className="mb-6 rounded-2xl border border-blue-200 bg-white shadow-sm">
-          <button
-            onClick={() => setInputOpen(v => !v)}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-blue-50 rounded-2xl transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-lg bg-blue-100">
-                <Settings size={14} className="text-blue-600" />
-              </div>
-              <span className="text-sm font-bold text-gray-800">내 스택 버전 입력</span>
-              <span className="text-xs text-gray-400 hidden sm:block">— 현재/목표 버전 입력으로 마이그레이션 분석</span>
-              {hasCurrentInput && (
-                <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-semibold">
-                  {inputCount}개 입력됨
-                </span>
-              )}
-              {hasTargetInput && (
-                <span className="text-[10px] bg-violet-100 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full font-semibold">
-                  마이그레이션 목표 설정
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {(hasCurrentInput || hasTargetInput) && (
-                <button onClick={e => { e.stopPropagation(); clearAll() }}
-                  className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50">
-                  <X size={10} /> 초기화
-                </button>
-              )}
-              {inputOpen ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
-            </div>
-          </button>
-
-          {inputOpen && (
-            <div className="px-5 pb-5 border-t border-gray-100">
-              {/* 파일 파서 */}
-              <div className="mt-4 mb-4">
-                <p className="text-[11px] font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
-                  <Package size={11} /> 설정 파일에서 현재 버전 자동 추출
-                </p>
-                <ConfigDropZone onParsed={handleParsed} />
-              </div>
-
-              {/* 구분선 */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-[11px] text-gray-400">또는 직접 입력</span>
-                <div className="flex-1 h-px bg-gray-100" />
-              </div>
-
-              {/* Dual-column stack input */}
-              <p className="text-[11px] text-gray-400 mb-2">
-                <span className="text-blue-600 font-semibold">현재</span> — 지금 사용 중인 버전 &nbsp;|&nbsp;
-                <span className="text-violet-600 font-semibold">목표</span> — 마이그레이션할 목표 버전 (입력 시 범위 분석 활성화)
-              </p>
-              <StackInputPanel
-                stack={enrichedStack}
-                currentVersions={currentVersions}
-                targetVersions={targetVersions}
-                onCurrentChange={setCurrent}
-                onTargetChange={setTarget}
-              />
-            </div>
-          )}
-        </section>
-
-        {/* 맞춤 권장사항 (current → latest) */}
-        <section className="mb-7">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-2">
-            <Sparkles size={12} className="text-blue-500" /> 맞춤 권장사항 — 현재 버전 기준 최신 비교
-          </h2>
-          <RecommendSection versions={currentVersions} stack={enrichedStack} />
-        </section>
-
-        {/* 마이그레이션 분석 (current → target range) */}
-        <section className="mb-7">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-2">
-            <GitBranch size={12} className="text-violet-500" /> 마이그레이션 분석 — 목표 버전 범위
-          </h2>
-          <MigrationSection
-            currentVersions={currentVersions}
-            targetVersions={targetVersions}
-            stack={enrichedStack}
-          />
-        </section>
-
-        {/* 신규 라이브러리 호환성 시뮬레이터 */}
-        <section className="mb-7">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-2">
-            <Zap size={12} className="text-indigo-500" /> 신규 라이브러리 호환성 시뮬레이터
-          </h2>
-          <CompatSimulator currentVersions={currentVersions} />
-        </section>
-
-        {/* 코드 스니펫 분석 */}
-        <section className="mb-7">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-2">
-            <FileText size={12} className="text-blue-500" /> 코드 스니펫 분석 — 수정 필요 항목 탐지
-          </h2>
-          <CodeAnalyzer
-            currentVersions={currentVersions}
-            targetVersions={targetVersions}
-          />
         </section>
 
       </>)}
