@@ -72,51 +72,22 @@
 
 ---
 
-### [FUNC-05] `rewriteGradleProperties` `g` 플래그 누락 — 중복 키 첫 번째만 교체
+### ~~[FUNC-05] `rewriteGradleProperties` `g` 플래그 누락 — 중복 키 첫 번째만 교체~~ ✅ 해결
 
 - **파일**: `frontend/src/services/versionRewriter.ts:143-151`
 - **증상**: `gradle.properties`에 동일 키가 두 번 이상 등장하면 첫 번째만 교체. 실제 적용되는 값이 교체되지 않은 두 번째 키일 수 있어 버전이 바뀌지 않은 것처럼 동작.
 - **원인**: `String.prototype.replace()`는 `g` 플래그 없으면 첫 번째 매칭만 교체
-
-```ts
-// 현재 (문제)
-out = out.replace(/(springBootVersion\s*=\s*).+/,  `$1${ver}`)
-out = out.replace(/(spring_boot_version\s*=\s*).+/, `$1${ver}`)
-out = out.replace(/(javaVersion\s*=\s*).+/,         `$1${jv}`)
-out = out.replace(/(sourceCompatibility\s*=\s*).+/, `$1${jv}`)
-out = out.replace(/(targetCompatibility\s*=\s*).+/, `$1${jv}`)
-
-// 수정 — 모두 g 플래그 추가
-out = out.replace(/(springBootVersion\s*=\s*).+/g,  `$1${ver}`)
-out = out.replace(/(spring_boot_version\s*=\s*).+/g, `$1${ver}`)
-out = out.replace(/(javaVersion\s*=\s*).+/g,         `$1${jv}`)
-out = out.replace(/(sourceCompatibility\s*=\s*).+/g, `$1${jv}`)
-out = out.replace(/(targetCompatibility\s*=\s*).+/g, `$1${jv}`)
-```
+- **해결**: 5개 replace 호출 전부 `g` 플래그 추가
 
 ---
 
 ## Medium — 데이터 정확성 · 피드백 부재
 
-### [FUNC-06] URL 유효성 검사 지연 — 입력 즉시 피드백 없음
+### ~~[FUNC-06] URL 유효성 검사 지연 — 입력 즉시 피드백 없음~~ ✅ 해결
 
-- **파일**: `frontend/src/TechNewsBoard.tsx` (RepoBranchPanel URL 입력부)
-- **증상**: `https://github.com/owner` 처럼 repo 없는 URL을 입력해도 "가져오기" 버튼 클릭 전까지 아무 표시 없음. fetch 타임아웃까지 기다린 후에야 실패를 알게 됨.
-
-```tsx
-// 수정
-const [urlError, setUrlError] = useState<string | null>(null)
-
-function handleUrlChange(val: string) {
-  setUrl(val)
-  if (!val.trim()) { setUrlError(null); return }
-  const parsed = parseRepoUrl(val)
-  setUrlError(parsed ? null : 'GitHub 또는 GitLab URL 형식을 확인하세요 (예: https://github.com/owner/repo)')
-}
-
-// 입력 필드 아래
-{urlError && <p className="text-xs text-red-500 mt-1">{urlError}</p>}
-```
+- **파일**: `frontend/src/TechNewsBoard.tsx` (RepoConnector URL 입력부)
+- **증상**: `https://github.com/owner` 처럼 repo 없는 URL을 입력해도 "가져오기" 버튼 클릭 전까지 아무 표시 없음.
+- **해결**: `urlError` 상태 추가, `github.com/` 또는 `gitlab.` 감지 시 `parseRepoUrl` 실시간 검사 → 실패 시 입력 필드 아래 빨간 경고 즉시 표시
 
 ---
 
@@ -167,8 +138,8 @@ function handleUrlChange(val: string) {
 | 🔴 High | FUNC-02 | GitHub 403/429 무응답 | `repoFetcher.ts` | ✅ 해결 |
 | 🔴 High | FUNC-03 | 대형 레포 5,000개 인위적 한도 | `repoFetcher.ts:186` | ✅ 해결 |
 | 🔴 High | FUNC-04 | AI 실패 무시 + 오분류 | `TechNewsBoard.tsx:1624` | ✅ 해결 |
-| 🟡 Medium | FUNC-05 | `g` 플래그 누락 | `versionRewriter.ts:143` | 미해결 |
-| 🟡 Medium | FUNC-06 | URL 검사 지연 | `TechNewsBoard.tsx` | 미해결 |
+| 🟡 Medium | FUNC-05 | `g` 플래그 누락 | `versionRewriter.ts:143` | ✅ 해결 |
+| 🟡 Medium | FUNC-06 | URL 검사 지연 | `TechNewsBoard.tsx` | ✅ 해결 |
 | 🟡 Medium | FUNC-07 | JSON 파싱 실패 메시지 불명확 | `configParser.ts:152` | ✅ 해결 |
 | 🟢 Low | FUNC-08 | favicon 없음 | `frontend/public/` | ✅ 해결 |
 | 🟢 Low | FUNC-09 | 반응형 미지원 | `TechNewsBoard.tsx` | ✅ 해결 |
