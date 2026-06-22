@@ -140,15 +140,15 @@ function rewriteGradleProperties(content: string, targets: ParsedVersions): stri
 
   if (targets.springboot) {
     const ver = toFullVersion(targets.springboot)
-    out = out.replace(/(springBootVersion\s*=\s*).+/,  `$1${ver}`)
-    out = out.replace(/(spring_boot_version\s*=\s*).+/, `$1${ver}`)
+    out = out.replace(/(springBootVersion\s*=\s*).+/g,  `$1${ver}`)
+    out = out.replace(/(spring_boot_version\s*=\s*).+/g, `$1${ver}`)
   }
 
   if (targets.java) {
     const jv = targets.java.replace(/[^0-9]/g, '')
-    out = out.replace(/(javaVersion\s*=\s*).+/,         `$1${jv}`)
-    out = out.replace(/(sourceCompatibility\s*=\s*).+/, `$1${jv}`)
-    out = out.replace(/(targetCompatibility\s*=\s*).+/, `$1${jv}`)
+    out = out.replace(/(javaVersion\s*=\s*).+/g,         `$1${jv}`)
+    out = out.replace(/(sourceCompatibility\s*=\s*).+/g, `$1${jv}`)
+    out = out.replace(/(targetCompatibility\s*=\s*).+/g, `$1${jv}`)
   }
 
   return out
