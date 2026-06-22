@@ -1490,6 +1490,7 @@ function RepoConnector({
           value={token}
           onChange={e => { setToken(e.target.value); onTokenChange?.(e.target.value) }}
           placeholder="ghp_xxxx  (GitHub repo 스코프)  또는  glpat-xxxx  (GitLab api 스코프)"
+          autoComplete="new-password"
           className="flex-1 min-w-0 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono
             text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400
             focus:ring-2 focus:ring-blue-100 transition-all"
@@ -2987,6 +2988,7 @@ function handleParsed(result: ParseResult) {
                   value={anthropicKey}
                   onChange={e => setAnthropicKey(e.target.value)}
                   placeholder="sk-ant-xxxx  (없으면 단순 치환만 적용)"
+                  autoComplete="new-password"
                   className="flex-1 min-w-0 bg-white border border-violet-200 rounded-lg px-3 py-2 text-xs font-mono
                     text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400
                     focus:ring-2 focus:ring-violet-100 transition-all"
