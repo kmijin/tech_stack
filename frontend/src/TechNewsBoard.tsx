@@ -2793,6 +2793,9 @@ function handleParsed(result: ParseResult) {
                   </div>
                   <p className="text-xs font-semibold text-gray-600 mb-1">{s.name}</p>
                   <p className={`text-lg font-mono font-bold ${s.color}`}>{s.latestLabel}</p>
+                  {s.status === 'lts' && (
+                    <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 mt-0.5">LTS</span>
+                  )}
                   <p className="text-[10px] text-gray-400 mt-1 flex items-center justify-center gap-1">
                     <Clock size={9} /> {s.releaseDate}
                   </p>
