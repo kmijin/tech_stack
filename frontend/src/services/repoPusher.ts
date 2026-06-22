@@ -18,7 +18,12 @@ export interface PushResult {
 
 function toBase64(str: string): string {
   const bytes = new TextEncoder().encode(str)
-  return btoa(String.fromCharCode(...bytes))
+  const CHUNK = 0x8000 // 32KB
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(binary)
 }
 
 // ── GitHub ────────────────────────────────────────────────
