@@ -1,7 +1,20 @@
 # 기능 검토 — 버그 및 개선사항
 
 > 검토일: 2026-06-22  
+> 최종 업데이트: 2026-06-22  
 > 검토 방법: Playwright 브라우저 직접 조작 + 전체 소스코드 정적 분석
+
+---
+
+## 요약
+
+| 구분 | 전체 | 해결 | 미해결 |
+|------|------|------|--------|
+| Critical | 1 | 1 | 0 |
+| High | 4 | 4 | 0 |
+| Medium | 3 | 0 | 3 |
+| Low | 2 | 0 | 2 |
+| **합계** | **10** | **5** | **5** |
 
 ---
 
@@ -17,120 +30,52 @@
 
 ## Critical — 런타임 크래시
 
-### [FUNC-01] `toBase64` 대용량 파일에서 스택 오버플로
+### ~~[FUNC-01] `toBase64` 대용량 파일에서 스택 오버플로~~ ✅ 해결
 
-- **파일**: `frontend/src/services/repoPusher.ts:21`
-- **증상**: 수백 개 의존성을 가진 `pom.xml`(~100KB 이상) 또는 대형 `package.json`을 GitHub에 커밋할 때 `Maximum call stack size exceeded` 에러 발생 → 브랜치 생성 전체 실패
-- **원인**: `String.fromCharCode(...bytes)` spread 연산자가 대형 `Uint8Array`를 인자로 전개할 때 JS 콜 스택 한도 초과
-
-```ts
-// 현재 (문제)
-function toBase64(str: string): string {
-  const bytes = new TextEncoder().encode(str)
-  return btoa(String.fromCharCode(...bytes))  // ← 대형 배열 전체 spread → 스택 오버플로
-}
-
-// 수정 — 32KB 청크 단위 spread
-// - 단순 for 루프(binary += ...)는 스택 오버플로는 해결되지만,
-//   JS 문자열 불변성으로 인해 반복마다 새 객체 생성 → 대용량에서 느림
-// - subarray로 32KB씩 잘라 spread하면 스택 한도에도 걸리지 않고 빠름
-//   (200KB pom.xml 기준 7번 반복으로 처리)
-function toBase64(str: string): string {
-  const bytes = new TextEncoder().encode(str)
-  const CHUNK = 0x8000 // 32KB
-  let binary = ''
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
-  }
-  return btoa(binary)
-}
-```
+- **파일**: `frontend/src/services/repoPusher.ts:19`
+- **원인**: `String.fromCharCode(...bytes)` spread 연산자가 대형 `Uint8Array` 전개 시 JS 콜 스택 한도 초과
+- **해결**: 32KB `subarray` 청크 단위 spread로 교체 — 파일 크기에 무관하게 안전하게 동작
 
 ---
 
 ## High — 사용자에게 잘못된 결과 또는 무응답
 
-### [FUNC-02] GitHub 429(Rate Limit) 무응답 처리
+### ~~[FUNC-02] GitHub 403/429 에러 무응답 처리~~ ✅ 해결
 
-- **파일**: `frontend/src/services/repoFetcher.ts:75`
-- **증상**: 토큰 없이 public repo를 조회하면 시간당 60회 제한 소진 후 아무 안내 없이 빈 결과만 반환. 많은 사용자가 동시에 접속할수록 빠르게 소진.
-- **원인**: `if (!res.ok) continue` — 404, 429, 401 모두 동일하게 무시하고 다음 브랜치로 넘어감
-
-```ts
-// 현재 (문제) — fetchGithub() 내부
-if (!res.ok) continue
-
-// 수정
-if (res.status === 401 || res.status === 403) {
-  throw new Error('Token 권한을 확인하세요 (repo 스코프 필요)')
-}
-if (res.status === 429) {
-  throw new Error(
-    'GitHub API 요청 한도 초과 (60회/시간) — Token을 입력하면 5,000회/시간으로 늘어납니다'
-  )
-}
-if (!res.ok) continue
-```
-
-> `fetchGithubTree()` (line 127) 도 동일 패턴 — 함께 수정 필요
+- **파일**: `frontend/src/services/repoFetcher.ts`
+- **원인**: `if (!res.ok) continue` — Rate Limit(403), 인증 오류(401), 한도 초과(429) 모두 무시 → 빈 결과 반환
+- **해결**: `fetchGithub`, `fetchGithubTree` 양쪽에 상태코드별 에러 분기 추가
+  - 401: Token 권한 오류
+  - 403 + rate limit 메시지: 한도 초과 안내 (Token 입력 유도)
+  - 403 + 기타: Private 레포 접근 불가 안내
+  - 429: 한도 초과 안내
+  - 에러 재throw로 UI까지 전파 보장
 
 ---
 
-### ~~[FUNC-03] 대형 레포 파일 탐색 5,000개 한도 무통보 절단~~ ✅ 해결
+### ~~[FUNC-03] 대형 레포 파일 탐색 5,000개 인위적 한도~~ ✅ 해결
 
 - **파일**: `frontend/src/services/repoFetcher.ts:186`
-- **원인**: `MAX_PAGES = 50` 고정값으로 5,000개에서 인위적으로 절단됨
-- **해결**: `MAX_PAGES` 제거 → `items.length < 100`(마지막 페이지) 또는 `items.length === 0`(안전장치)을 종료 조건으로 사용. 파일 수에 관계없이 전체 탐색하므로 절단 자체가 발생하지 않음
+- **원인**: `MAX_PAGES = 50` 고정값으로 5,000개에서 절단, 사용자에게 알림 없음
+- **해결**: `MAX_PAGES` 제거 → `items.length < 100`(마지막 페이지) / `items.length === 0`(안전장치) 기준으로 종료. 파일 수에 관계없이 전체 탐색, 절단 자체가 발생하지 않음
 
 ---
 
-### [FUNC-04] AI 변환 실패 시 에러 완전 무시
+### ~~[FUNC-04] AI 변환 실패 시 에러 무시 + fixedList 오분류~~ ✅ 해결
 
-- **파일**: `frontend/src/TechNewsBoard.tsx:1632`
-- **증상**: Claude API 키 만료, 네트워크 오류, Rate Limit(429) 등 어떤 이유로 AI 변환이 실패해도 사용자에게 아무 피드백이 없음. 복잡한 패턴(`WebSecurityConfigurerAdapter` 등)이 변환 안 된 채로 커밋됨.
-- **원인**: catch 블록이 에러를 완전히 삼킴
-
-```ts
-// 현재 (문제)
-try {
-  const aiResult = await aiTransformFile(...)
-  if (aiResult) { newContent = aiResult }
-} catch { /* AI 실패 시 단순 결과 유지 */ }
-
-// 수정
-try {
-  const aiResult = await aiTransformFile(...)
-  if (aiResult) { newContent = aiResult }
-} catch (e) {
-  const reason = e instanceof Error ? e.message : '알 수 없는 오류'
-  // AI 실패 파일을 수동 확인 목록으로 이동
-  manualList.push({
-    path: file.path,
-    patterns: complex.map(p => ({ ...p })),
-    aiError: `AI 변환 실패: ${reason}`,
-  })
-}
-```
-
-> `aiTransformer.ts:162-165` 에서 HTTP 상태코드별 메시지도 개선:
-
-```ts
-// 현재
-throw new Error(err?.error?.message ?? `API 오류 (${res.status})`)
-
-// 수정
-if (res.status === 401) throw new Error('Anthropic API 키가 유효하지 않습니다. 키를 확인하세요.')
-if (res.status === 429) throw new Error('Anthropic API 요청 한도 초과. 잠시 후 다시 시도하세요.')
-if (res.status >= 500) throw new Error('Anthropic 서버 오류. 잠시 후 다시 시도하세요.')
-throw new Error(err?.error?.message ?? `API 오류 (${res.status})`)
-```
+- **파일**: `frontend/src/TechNewsBoard.tsx:1624`
+- **원인**: catch 블록이 에러를 삼킨 채 `fixedList`에 `type:'ai'`로 오등록 → UI에서 "AI 변환 완료"로 표시되나 실제로는 복잡 패턴 미변환 상태로 커밋
+- **해결**:
+  - AI 실패 시 에러 메시지 캡처 → `manualList`로 이동 (`aiError` 필드 포함)
+  - 단순 치환 결과는 `type:'source'`로 `fixedList` 등록 후 커밋 유지
+  - UI에서 실패 파일별로 **에러 원인 + 패턴별 줄번호/코드 스니펫** 표시
 
 ---
 
 ### [FUNC-05] `rewriteGradleProperties` `g` 플래그 누락 — 중복 키 첫 번째만 교체
 
 - **파일**: `frontend/src/services/versionRewriter.ts:143-151`
-- **증상**: `gradle.properties`에 동일 키가 두 번 이상 등장(이전 버전 주석 처리 후 새 값 추가한 경우 등)하면 첫 번째만 교체되고 나머지는 그대로 남음. 커밋 후 실제 적용되는 값이 두 번째 키일 수 있어 버전이 바뀌지 않은 것처럼 동작.
+- **증상**: `gradle.properties`에 동일 키가 두 번 이상 등장하면 첫 번째만 교체. 실제 적용되는 값이 교체되지 않은 두 번째 키일 수 있어 버전이 바뀌지 않은 것처럼 동작.
 - **원인**: `String.prototype.replace()`는 `g` 플래그 없으면 첫 번째 매칭만 교체
 
 ```ts
@@ -156,8 +101,7 @@ out = out.replace(/(targetCompatibility\s*=\s*).+/g, `$1${jv}`)
 ### [FUNC-06] URL 유효성 검사 지연 — 입력 즉시 피드백 없음
 
 - **파일**: `frontend/src/TechNewsBoard.tsx` (RepoBranchPanel URL 입력부)
-- **증상**: `https://github.com/owner` 처럼 repo 없는 URL을 입력해도 "가져오기" 버튼 클릭 전까지 아무 표시 없음. 사용자가 fetch 타임아웃까지 기다린 후에야 실패를 알게 됨.
-- **수정**: URL 입력 `onChange`에서 `parseRepoUrl()`로 실시간 검사 후 인라인 에러 표시
+- **증상**: `https://github.com/owner` 처럼 repo 없는 URL을 입력해도 "가져오기" 버튼 클릭 전까지 아무 표시 없음. fetch 타임아웃까지 기다린 후에야 실패를 알게 됨.
 
 ```tsx
 // 수정
@@ -179,8 +123,7 @@ function handleUrlChange(val: string) {
 ### [FUNC-07] `configParser` JSON 파싱 실패 메시지 불명확
 
 - **파일**: `frontend/src/services/configParser.ts:152`
-- **증상**: `package.json`이 JSON 문법 오류인 경우 `warnings: ['JSON 파싱 실패']`를 반환하지만 UI에서는 "0개 버전 추출됨"으로만 보임. 사용자가 파일이 손상된 건지 지원 버전이 없는 건지 구분 불가.
-- **수정**: warnings가 있을 경우 UI에서 별도 표시
+- **증상**: `package.json`이 JSON 문법 오류인 경우 UI에서 "0개 버전 추출됨"으로만 표시. 파일이 손상된 건지 지원 버전이 없는 건지 구분 불가.
 
 ```tsx
 // RepoBranchPanel 파일 목록 표시 부분에 추가
@@ -198,8 +141,7 @@ function handleUrlChange(val: string) {
 ### [FUNC-08] favicon.ico 없음 — 브라우저 콘솔 404 에러
 
 - **파일**: `frontend/public/` 디렉토리 자체 없음
-- **증상**: 브라우저 콘솔에 `GET /favicon.ico 404` 에러가 계속 찍힘. 사용자가 처음 DevTools를 열면 바로 눈에 띔.
-- **수정**: `frontend/public/` 디렉토리 생성 후 `favicon.ico` 또는 `favicon.svg` 추가
+- **증상**: 브라우저 콘솔에 `GET /favicon.ico 404` 에러가 계속 찍힘.
 
 ```html
 <!-- index.html <head>에 추가 -->
@@ -207,7 +149,7 @@ function handleUrlChange(val: string) {
 ```
 
 ```svg
-<!-- frontend/public/favicon.svg — 간단한 예시 -->
+<!-- frontend/public/favicon.svg -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <text y="26" font-size="28">📡</text>
 </svg>
@@ -218,21 +160,21 @@ function handleUrlChange(val: string) {
 ### [FUNC-09] 모바일 / 좁은 화면 레이아웃 미지원
 
 - **파일**: `frontend/src/TechNewsBoard.tsx` (전반)
-- **증상**: 1,024px 미만 화면(태블릿·노트북)에서 카드 그리드가 넘치거나 입력 필드가 잘림. 내부 도구라도 듀얼 모니터 없는 환경에서 한쪽에 띄워 쓰면 UI 깨짐.
-- **수정 방향**: 버전 카드 그리드 `grid-cols-3 → sm:grid-cols-2 lg:grid-cols-3`, 입력 패널 `flex → flex-wrap`으로 조정
+- **증상**: 1,024px 미만 화면에서 카드 그리드가 넘치거나 입력 필드가 잘림.
+- **수정 방향**: 버전 카드 그리드 `grid-cols-3 → sm:grid-cols-2 lg:grid-cols-3`, 입력 패널 `flex → flex-wrap`
 
 ---
 
 ## 우선순위 요약
 
-| 순위 | ID | 항목 | 파일 | 영향 |
+| 순위 | ID | 항목 | 파일 | 상태 |
 |------|----|------|------|------|
-| 🔴 Critical | FUNC-01 | `toBase64` 스택 오버플로 | `repoPusher.ts:21` | 대형 파일 커밋 전체 실패 |
-| 🔴 High | FUNC-02 | GitHub 429 무응답 | `repoFetcher.ts:75` | 토큰 없는 사용자 무한 대기 |
-| 🔴 High | FUNC-03 | 대형 레포 절단 무통보 | `repoFetcher.ts:154` | 불완전 마이그레이션 감지 불가 |
-| 🔴 High | FUNC-04 | AI 실패 에러 완전 무시 | `TechNewsBoard.tsx:1632` | 복잡 패턴 미변환 채로 커밋 |
-| 🟡 Medium | FUNC-05 | `g` 플래그 누락 | `versionRewriter.ts:143` | 중복 키 환경에서 버전 미교체 |
-| 🟡 Medium | FUNC-06 | URL 검사 지연 | `TechNewsBoard.tsx` | 잘못된 URL 피드백 늦음 |
-| 🟡 Medium | FUNC-07 | JSON 파싱 실패 메시지 불명확 | `configParser.ts:152` | 오류 원인 구분 불가 |
-| 🟢 Low | FUNC-08 | favicon 없음 | `frontend/public/` | 콘솔 404 에러 노출 |
-| 🟢 Low | FUNC-09 | 반응형 미지원 | `TechNewsBoard.tsx` | 좁은 화면 레이아웃 깨짐 |
+| 🔴 Critical | FUNC-01 | `toBase64` 스택 오버플로 | `repoPusher.ts:19` | ✅ 해결 |
+| 🔴 High | FUNC-02 | GitHub 403/429 무응답 | `repoFetcher.ts` | ✅ 해결 |
+| 🔴 High | FUNC-03 | 대형 레포 5,000개 인위적 한도 | `repoFetcher.ts:186` | ✅ 해결 |
+| 🔴 High | FUNC-04 | AI 실패 무시 + 오분류 | `TechNewsBoard.tsx:1624` | ✅ 해결 |
+| 🟡 Medium | FUNC-05 | `g` 플래그 누락 | `versionRewriter.ts:143` | 미해결 |
+| 🟡 Medium | FUNC-06 | URL 검사 지연 | `TechNewsBoard.tsx` | 미해결 |
+| 🟡 Medium | FUNC-07 | JSON 파싱 실패 메시지 불명확 | `configParser.ts:152` | 미해결 |
+| 🟢 Low | FUNC-08 | favicon 없음 | `frontend/public/` | 미해결 |
+| 🟢 Low | FUNC-09 | 반응형 미지원 | `TechNewsBoard.tsx` | 미해결 |
