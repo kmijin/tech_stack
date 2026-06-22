@@ -72,11 +72,27 @@ async function fetchGithub(
         `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${ref}`,
         { headers },
       )
+      if (res.status === 401) {
+        throw new Error('Token 권한을 확인하세요 (repo 스코프 필요)')
+      }
+      if (res.status === 403) {
+        const body = await res.json().catch(() => ({}))
+        if ((body as any)?.message?.toLowerCase().includes('rate limit')) {
+          throw new Error('GitHub API 요청 한도 초과 (60회/시간) — Token을 입력하면 5,000회/시간으로 늘어납니다')
+        }
+        throw new Error('접근 권한이 없습니다 — Private 레포라면 Token을 입력하세요')
+      }
+      if (res.status === 429) {
+        throw new Error('GitHub API 요청 한도 초과 — 잠시 후 다시 시도하세요')
+      }
       if (!res.ok) continue
       const d = await res.json()
       if (d.type !== 'file' || !d.content) continue
       return { content: decodeBase64Utf8(d.content), sha: d.sha }
-    } catch { continue }
+    } catch (e) {
+      if (e instanceof Error && (e.message.includes('한도') || e.message.includes('Token') || e.message.includes('권한'))) throw e
+      continue
+    }
   }
   return null
 }
@@ -128,12 +144,28 @@ async function fetchGithubTree(
         `https://api.github.com/repos/${owner}/${repo}/git/trees/${ref}?recursive=1`,
         { headers },
       )
+      if (res.status === 401) {
+        throw new Error('Token 권한을 확인하세요 (repo 스코프 필요)')
+      }
+      if (res.status === 403) {
+        const body = await res.json().catch(() => ({}))
+        if ((body as any)?.message?.toLowerCase().includes('rate limit')) {
+          throw new Error('GitHub API 요청 한도 초과 (60회/시간) — Token을 입력하면 5,000회/시간으로 늘어납니다')
+        }
+        throw new Error('접근 권한이 없습니다 — Private 레포라면 Token을 입력하세요')
+      }
+      if (res.status === 429) {
+        throw new Error('GitHub API 요청 한도 초과 — 잠시 후 다시 시도하세요')
+      }
       if (!res.ok) continue
       const data = await res.json()
       return (data.tree as { path: string; type: string }[])
         .filter(f => f.type === 'blob')
         .map(f => f.path)
-    } catch { continue }
+    } catch (e) {
+      if (e instanceof Error && (e.message.includes('한도') || e.message.includes('Token') || e.message.includes('권한'))) throw e
+      continue
+    }
   }
   return []
 }
