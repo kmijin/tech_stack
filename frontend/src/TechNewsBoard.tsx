@@ -29,6 +29,7 @@ import { parseRepoUrl, fetchRepoFiles, fetchSourceFiles } from './services/repoF
 import type { RepoInfo, FetchedFile } from './services/repoFetcher'
 import { rewriteConfig, getChangeSummary, rewriteSourceFile, deriveCompatibleTargets } from './services/versionRewriter'
 import { pushToBranch, generateBranchName, generateCommitMessage } from './services/repoPusher'
+import type { FileToCommit } from './services/repoPusher'
 import { aiTransformFile, detectComplexPatterns, AiTransformError, AI_ERROR_CODE } from './services/aiTransformer'
 
 // ─────────────────────────────────────────────
@@ -1560,6 +1561,76 @@ function RepoConnector({
 }
 
 // ─────────────────────────────────────────────
+// Migration Notes 생성
+// ─────────────────────────────────────────────
+
+type ManualReason = 'no_key' | 'haiku_too_large' | 'sonnet_too_large' | 'ai_error'
+
+function generateMigrationNotes(
+  allChanges: ChangeSummary[],
+  fixedList:  { path: string; type: 'config' | 'source' | 'ai' }[],
+  manualList: { path: string; patterns: { description: string; line: number; snippet: string }[]; reason: ManualReason; aiError?: string }[],
+  branchName: string,
+): string {
+  const today = new Date().toISOString().slice(0, 10)
+  const L = (...s: string[]) => s
+
+  const sections: string[] = [
+    '# Migration Notes',
+    '',
+    `> 생성일: ${today}`,
+    `> 브랜치: \`${branchName}\``,
+    `> 생성 도구: Tech Stack Updater`,
+    '',
+    '---',
+    '',
+  ]
+
+  // 버전 변경 요약
+  if (allChanges.length > 0) {
+    sections.push('## 버전 변경 요약', '', '| 스택 | 현재 | 목표 |', '|------|------|------|')
+    for (const c of allChanges) sections.push(`| ${c.label} | \`${c.before}\` | \`${c.after}\` |`)
+    sections.push('')
+  }
+
+  // 자동 적용 완료
+  const configFixed = fixedList.filter(f => f.type === 'config')
+  const srcFixed    = fixedList.filter(f => f.type === 'source' || f.type === 'ai')
+  if (fixedList.length > 0) {
+    sections.push('## ✅ 자동 적용 완료', '')
+    if (configFixed.length > 0) {
+      sections.push(`### 설정 파일 (${configFixed.length}개)`)
+      configFixed.forEach(f => sections.push(`- \`${f.path}\``))
+      sections.push('')
+    }
+    if (srcFixed.length > 0) {
+      sections.push(`### 소스 파일 (${srcFixed.length}개)`)
+      srcFixed.forEach(f => sections.push(`- \`${f.path}\`${f.type === 'ai' ? ' _(AI 변환)_' : ''}`))
+      sections.push('')
+    }
+  }
+
+  // 수동 작업 필요
+  if (manualList.length > 0) {
+    const reasonText = (r: ManualReason, err?: string) =>
+      r === 'no_key'           ? 'Anthropic API 키 없음 — AI 자동 변환 미실행' :
+      r === 'haiku_too_large'  ? '파일이 너무 큼 — Sonnet 모델로 재시도 권장' :
+      r === 'sonnet_too_large' ? '파일이 너무 큼 — 수동 변환 필요' :
+                                 `AI 변환 실패: ${err ?? '알 수 없는 오류'}`
+
+    sections.push(`## ⚠️ 수동 작업 필요 (${manualList.length}개)`, '')
+    for (const f of manualList) {
+      sections.push(`### \`${f.path}\``, '', `> ${reasonText(f.reason, f.aiError)}`, '')
+      for (const p of f.patterns) {
+        sections.push(`**L${p.line}** — ${p.description}`, '', '```', p.snippet, '```', '')
+      }
+    }
+  }
+
+  return sections.join('\n')
+}
+
+// ─────────────────────────────────────────────
 // Branch Creator
 // ─────────────────────────────────────────────
 
@@ -1613,7 +1684,6 @@ function BranchCreator({
   const [pushError,    setPushError]    = useState<string | null>(null)
   const [pushResult,   setPushResult]   = useState<string | null>(null)
   const [scanError,    setScanError]    = useState<string | null>(null)
-  type ManualReason = 'no_key' | 'haiku_too_large' | 'sonnet_too_large' | 'ai_error'
   const [autoFixed,    setAutoFixed]    = useState<{ path: string; type: 'config' | 'source' | 'ai' }[]>([])
   const [needsManual,  setNeedsManual]  = useState<{ path: string; patterns: { description: string; line: number; snippet: string }[]; reason: ManualReason; aiError?: string }[]>([])
 
@@ -1694,11 +1764,18 @@ function BranchCreator({
       setPushStatus(null); setPushError('수정할 파일이 없습니다.'); return
     }
 
-    // 3. 브랜치 생성 + 커밋
+    // 3. MIGRATION_NOTES.md 생성
+    const mdContent = generateMigrationNotes(allChanges, fixedList, manualList, branchName)
+    const mdFile: FileToCommit = {
+      path: 'MIGRATION_NOTES.md', filename: 'MIGRATION_NOTES.md',
+      content: '', newContent: mdContent,
+    }
+
+    // 4. 브랜치 생성 + 커밋
     setPushStatus(`커밋 중... (설정 ${configFiles.length}개${srcFiles.length > 0 ? ` + 소스 ${srcFiles.length}개` : ''})`)
     try {
       const commitMsg = generateCommitMessage(allChanges)
-      const result = await pushToBranch(repoInfo, repoToken, branchName, [...configFiles, ...srcFiles], commitMsg)
+      const result = await pushToBranch(repoInfo, repoToken, branchName, [...configFiles, ...srcFiles, mdFile], commitMsg)
       setPushResult(result.branchUrl)
       setAutoFixed(fixedList)
       setNeedsManual(manualList)
@@ -1867,6 +1944,13 @@ function BranchCreator({
               </div>
             </div>
           )}
+
+          {/* MIGRATION_NOTES.md 생성 안내 */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-[10px] text-gray-500">
+            <FileText size={11} className="text-gray-400 shrink-0" />
+            <code className="font-mono">MIGRATION_NOTES.md</code>
+            <span>— 변경사항 및 수동 작업 목록이 브랜치에 함께 커밋됐습니다</span>
+          </div>
 
           {/* 수동 확인 필요 */}
           {needsManual.length > 0 && (

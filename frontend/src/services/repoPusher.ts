@@ -126,9 +126,9 @@ async function pushGitlab(
   }
   if (!created) throw new Error('기본 브랜치(main/master)를 찾을 수 없습니다')
 
-  // 2. 단일 커밋으로 모든 파일 업데이트
+  // 2. 단일 커밋으로 모든 파일 업데이트 (sha 없으면 신규 파일 create)
   const actions = files.map(f => ({
-    action:    'update',
+    action:    f.sha ? 'update' : 'create',
     file_path: f.path,
     content:   f.newContent,
   }))
