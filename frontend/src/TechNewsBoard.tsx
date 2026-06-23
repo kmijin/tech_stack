@@ -417,14 +417,9 @@ function StackCard({ item, currentVersion, viewVersion, onViewVersionChange }: {
 
         <div className="flex items-center justify-between mb-3">
           <div>
-            <div className="flex items-center gap-2">
-              <p className={`text-2xl font-mono font-bold ${item.color}`}>
-                {viewVersion ?? item.latestLabel}
-              </p>
-              {!viewVersion && item.status === 'lts' && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">LTS</span>
-              )}
-            </div>
+            <p className={`text-2xl font-mono font-bold ${item.color}`}>
+              {viewVersion ?? item.latestLabel}
+            </p>
             {!viewVersion && (
               <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
                 <Clock size={9} /> {item.releaseDate}
