@@ -56,7 +56,6 @@ interface StackItem {
   features: Feature[]
   link: string
   quickVersions: string[]
-  ltsVersions?: string[]
   unitLabel: string
 }
 interface CompatItem {
