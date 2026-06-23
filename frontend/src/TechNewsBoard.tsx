@@ -456,7 +456,6 @@ function StackCard({ item, currentVersion, viewVersion, onViewVersionChange }: {
             )
             const latestBadge = candidates.sort((a, b) => b.length - a.length)[0]
             const isLatest  = v === latestBadge
-            const isLts     = item.ltsVersions?.includes(v) ?? false
             const isSelected = viewVersion === v
             return (
               <button
@@ -467,12 +466,10 @@ function StackCard({ item, currentVersion, viewVersion, onViewVersionChange }: {
                     ? `${item.bgColor} ${item.color} ${item.borderColor} font-bold ring-2 ring-offset-1 ring-current`
                     : isLatest
                       ? `${item.bgColor} ${item.color} ${item.borderColor} font-bold hover:opacity-80`
-                      : isLts
-                        ? 'bg-blue-50 text-blue-600 border-blue-200 font-semibold hover:bg-blue-100'
-                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'
+                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'
                 }`}
               >
-                {v}{isLatest ? ' ★' : isLts ? ' LTS' : ''}
+                {v}{isLatest ? ' ★' : ''}
               </button>
             )
           })}
@@ -767,9 +764,8 @@ function StackInputPanel({
             {/* Quick versions: 항상 목표 버전으로 설정 */}
             <div className="flex flex-wrap gap-1">
               {item.quickVersions.map(v => {
-                const isCur  = cur === v
-                const isTgt  = tgt === v
-                const isLts  = item.ltsVersions?.includes(v) ?? false
+                const isCur = cur === v
+                const isTgt = tgt === v
                 return (
                   <button
                     key={v}
@@ -779,11 +775,9 @@ function StackInputPanel({
                         ? `${item.borderColor} ${item.color} ${item.bgColor} font-bold`
                         : isTgt
                         ? 'border-violet-400 text-violet-600 bg-violet-50 font-bold'
-                        : isLts
-                        ? 'border-blue-200 text-blue-600 bg-blue-50 font-semibold hover:bg-blue-100'
                         : 'border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300 bg-white'}`}
                   >
-                    {v}{isLts && !isCur && !isTgt ? <span className="ml-0.5 text-[7px] text-blue-400">LTS</span> : ''}
+                    {v}
                     {isCur && <span className="absolute -top-1.5 -right-1 text-[7px] leading-none bg-blue-500 text-white rounded-full px-0.5">현</span>}
                     {isTgt && <span className="absolute -top-1.5 -right-1 text-[7px] leading-none bg-violet-500 text-white rounded-full px-0.5">목</span>}
                   </button>
