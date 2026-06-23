@@ -2732,6 +2732,7 @@ export default function TechNewsBoard() {
   const [repoInfo,      setRepoInfo]      = useState<RepoInfo | null>(null)
   const [repoToken,     setRepoToken]     = useState('')
   const [fetchedFiles,  setFetchedFiles]  = useState<FetchedFile[]>([])
+  const [transformMode,   setTransformMode]   = useState<'ai' | 'md'>('md')
   const [anthropicKey,    setAnthropicKey]    = useState('')
   const [aiModel,         setAiModel]         = useState<'haiku' | 'sonnet'>('haiku')
   const [clearKeyAfterUse, setClearKeyAfterUse] = useState(true)
@@ -3020,81 +3021,117 @@ function handleParsed(result: ParseResult) {
           </section>
         )}
 
-        {/* AI 키 입력 (선택) */}
+        {/* 소스 변환 방식 선택 */}
         {fetchedFiles.length > 0 && (
           <section className="mb-5">
             <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-2">
-              <Sparkles size={12} className="text-violet-400" /> AI 코드 변환 (선택)
+              <Sparkles size={12} className="text-violet-400" /> 소스 변환 방식
             </h2>
-            <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
-              <p className="text-[11px] text-violet-700">
-                Anthropic API 키를 입력하면 <strong>WebSecurityConfigurerAdapter, finalize(), ThreadLocal</strong> 등
-                단순 치환으로 안 되는 복잡한 패턴도 Claude가 자동으로 수정합니다.
-              </p>
-
-              {/* 모델 선택 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {([
-                  {
-                    value: 'haiku' as const,
-                    label: 'Claude Haiku',
-                    badge: '빠름·저렴',
-                    badgeCls: 'bg-emerald-100 text-emerald-700',
-                    desc: '패턴 위치 ±25줄만 전달. 대형 파일은 수동 확인으로 넘어갈 수 있습니다.',
-                  },
-                  {
-                    value: 'sonnet' as const,
-                    label: 'Claude Sonnet',
-                    badge: '정확·비쌈',
-                    badgeCls: 'bg-violet-100 text-violet-700',
-                    desc: '파일 전체를 보고 변환. 복잡한 Security 설정, 대형 클래스도 처리합니다.',
-                  },
-                ] as const).map(m => (
-                  <button
-                    key={m.value}
-                    onClick={() => setAiModel(m.value)}
-                    className={`text-left rounded-lg border px-3 py-2.5 transition-all
-                      ${aiModel === m.value
-                        ? 'border-violet-400 bg-white shadow-sm ring-2 ring-violet-100'
-                        : 'border-violet-200 bg-violet-50 hover:bg-white'}`}
-                  >
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="text-[11px] font-bold text-gray-700">{m.label}</span>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${m.badgeCls}`}>{m.badge}</span>
-                    </div>
-                    <p className="text-[10px] text-gray-500 leading-relaxed">{m.desc}</p>
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex gap-2 items-center">
-                <span className="text-[11px] text-violet-600 shrink-0 font-medium">Anthropic API Key</span>
-                <input
-                  type="password"
-                  value={anthropicKey}
-                  onChange={e => setAnthropicKey(e.target.value)}
-                  placeholder="sk-ant-xxxx  (없으면 단순 치환만 적용)"
-                  autoComplete="new-password"
-                  className="flex-1 min-w-0 bg-white border border-violet-200 rounded-lg px-3 py-2 text-xs font-mono
-                    text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400
-                    focus:ring-2 focus:ring-violet-100 transition-all"
-                />
-              </div>
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={clearKeyAfterUse}
-                    onChange={e => setClearKeyAfterUse(e.target.checked)}
-                    className="accent-violet-500"
-                  />
-                  <span className="text-[10px] text-violet-600">브랜치 생성 완료 후 키 자동 초기화</span>
-                </label>
-                <p className="text-[9px] text-amber-600 flex items-center gap-1">
-                  <AlertTriangle size={9} /> 키는 브라우저 메모리에만 저장되나 DevTools에서 확인될 수 있습니다. 공용 PC에서는 주의하세요.
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* MD 파일 생성 */}
+              <button
+                onClick={() => setTransformMode('md')}
+                className={`text-left rounded-xl border p-4 transition-all ${
+                  transformMode === 'md'
+                    ? 'border-emerald-400 bg-white shadow-sm ring-2 ring-emerald-100'
+                    : 'border-gray-200 bg-gray-50 hover:bg-white'}`}
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <FileText size={14} className="text-emerald-600 shrink-0" />
+                  <span className="text-[12px] font-bold text-gray-800">MD 파일 생성</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">무료</span>
+                </div>
+                <p className="text-[11px] text-gray-500 leading-relaxed">
+                  API 키 불필요. 수정이 필요한 패턴을 <code className="font-mono text-[10px] bg-gray-100 px-1 rounded">MIGRATION_NOTES.md</code>로 정리해 브랜치에 커밋합니다.
+                  해당 파일을 Claude에 붙여넣어 직접 수정을 요청하세요.
                 </p>
-              </div>
+              </button>
+
+              {/* AI 자동 변환 */}
+              <button
+                onClick={() => setTransformMode('ai')}
+                className={`text-left rounded-xl border p-4 transition-all ${
+                  transformMode === 'ai'
+                    ? 'border-violet-400 bg-white shadow-sm ring-2 ring-violet-100'
+                    : 'border-gray-200 bg-gray-50 hover:bg-white'}`}
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Sparkles size={14} className="text-violet-600 shrink-0" />
+                  <span className="text-[12px] font-bold text-gray-800">AI 자동 변환</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">유료</span>
+                </div>
+                <p className="text-[11px] text-gray-500 leading-relaxed">
+                  Anthropic API 키 필요. <strong className="text-gray-600">WebSecurityConfigurerAdapter, finalize(), ThreadLocal</strong> 등
+                  복잡한 패턴을 Claude가 직접 수정해 브랜치에 커밋합니다.
+                </p>
+              </button>
             </div>
+
+            {/* AI 모드 상세 옵션 */}
+            {transformMode === 'ai' && (
+              <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {([
+                    {
+                      value: 'haiku' as const,
+                      label: 'Claude Haiku',
+                      badge: '빠름·저렴',
+                      badgeCls: 'bg-emerald-100 text-emerald-700',
+                      desc: '패턴 위치 ±25줄만 전달. 대형 파일은 수동 확인으로 넘어갈 수 있습니다.',
+                    },
+                    {
+                      value: 'sonnet' as const,
+                      label: 'Claude Sonnet',
+                      badge: '정확·비쌈',
+                      badgeCls: 'bg-violet-100 text-violet-700',
+                      desc: '파일 전체를 보고 변환. 복잡한 Security 설정, 대형 클래스도 처리합니다.',
+                    },
+                  ] as const).map(m => (
+                    <button
+                      key={m.value}
+                      onClick={() => setAiModel(m.value)}
+                      className={`text-left rounded-lg border px-3 py-2.5 transition-all
+                        ${aiModel === m.value
+                          ? 'border-violet-400 bg-white shadow-sm ring-2 ring-violet-100'
+                          : 'border-violet-200 bg-violet-50 hover:bg-white'}`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[11px] font-bold text-gray-700">{m.label}</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${m.badgeCls}`}>{m.badge}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 leading-relaxed">{m.desc}</p>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2 items-center">
+                  <span className="text-[11px] text-violet-600 shrink-0 font-medium">Anthropic API Key</span>
+                  <input
+                    type="password"
+                    value={anthropicKey}
+                    onChange={e => setAnthropicKey(e.target.value)}
+                    placeholder="sk-ant-xxxx"
+                    autoComplete="new-password"
+                    className="flex-1 min-w-0 bg-white border border-violet-200 rounded-lg px-3 py-2 text-xs font-mono
+                      text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400
+                      focus:ring-2 focus:ring-violet-100 transition-all"
+                  />
+                </div>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={clearKeyAfterUse}
+                      onChange={e => setClearKeyAfterUse(e.target.checked)}
+                      className="accent-violet-500"
+                    />
+                    <span className="text-[10px] text-violet-600">브랜치 생성 완료 후 키 자동 초기화</span>
+                  </label>
+                  <p className="text-[9px] text-amber-600 flex items-center gap-1">
+                    <AlertTriangle size={9} /> 키는 브라우저 메모리에만 저장되나 DevTools에서 확인될 수 있습니다.
+                  </p>
+                </div>
+              </div>
+            )}
           </section>
         )}
 
@@ -3110,9 +3147,9 @@ function handleParsed(result: ParseResult) {
               fetchedFiles={fetchedFiles}
               currentVersions={currentVersions}
               targetVersions={targetVersions}
-              anthropicKey={anthropicKey}
+              anthropicKey={transformMode === 'ai' ? anthropicKey : ''}
               aiModel={aiModel}
-              onClearKey={clearKeyAfterUse ? () => setAnthropicKey('') : undefined}
+              onClearKey={transformMode === 'ai' && clearKeyAfterUse ? () => setAnthropicKey('') : undefined}
             />
           </section>
         )}
